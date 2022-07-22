@@ -1,3 +1,4 @@
+use anyhow::Result;
 use tracing::trace;
 use tokio::net::UnixStream;
 use zbus::{dbus_interface, fdo, names::OwnedUniqueName, Connection, ConnectionBuilder, Guid};
@@ -9,7 +10,7 @@ pub struct Peer {
 }
 
 impl Peer {
-    pub async fn new(guid: &Guid, unix_stream: UnixStream) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(guid: &Guid, unix_stream: UnixStream) -> Result<Self> {
         let conn = ConnectionBuilder::socket(unix_stream)
             .server(guid)
             .p2p()

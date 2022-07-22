@@ -2,6 +2,7 @@ mod peer;
 
 use std::env;
 
+use anyhow::Result;
 use clap::Parser;
 use nix::unistd::Uid;
 use tracing::{debug, warn};
@@ -18,7 +19,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     FmtSubscriber::builder()
         .with_env_filter(EnvFilter::from_default_env())
         .finish()
