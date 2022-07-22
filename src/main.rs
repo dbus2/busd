@@ -4,7 +4,7 @@ use std::env;
 
 use clap::Parser;
 use nix::unistd::Uid;
-use tracing::{debug, error};
+use tracing::{debug, warn};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 use zbus::Guid;
 
@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         debug!("Accepted connection from {:?}", addr);
         match peer::Peer::new(&guid, unix_stream).await {
             Ok(peer) => peers.push(peer),
-            Err(e) => error!("{}", e),
+            Err(e) => warn!("Failed to establish connection: {}", e),
         }
     }
 
