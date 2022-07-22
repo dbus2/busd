@@ -1,10 +1,12 @@
+mod peer;
+
 use std::env;
 
 use clap::Parser;
 use nix::unistd::Uid;
-use tracing::{debug, trace};
+use tracing::{debug, error};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
-use zbus::{dbus_interface, fdo, names::OwnedUniqueName, ConnectionBuilder, Guid};
+use zbus::Guid;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -30,39 +32,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| format!("/run/user/{}", Uid::current()));
     let path = format!("{}/zbusd-session", runtime_dir);
     let listener = tokio::net::UnixListener::bind(&path)?;
-    let mut connections = vec![];
+    let mut peers = vec![];
+    let guid = Guid::generate();
 
     while let Ok((unix_stream, addr)) = listener.accept().await {
         debug!("Accepted connection from {:?}", addr);
-        let guid = Guid::generate();
-        let conn = ConnectionBuilder::socket(unix_stream)
-            .server(&guid)
-            .p2p()
-            .serve_at("/org/freedesktop/DBus", DBus::default())?
-            .build()
-            .await?;
-        trace!("created: {:?}", conn);
-        connections.push(conn);
+        match peer::Peer::new(&guid, unix_stream).await {
+            Ok(peer) => peers.push(peer),
+            Err(e) => error!("{}", e),
+        }
     }
 
     Ok(())
-}
-
-#[derive(Debug, Default)]
-struct DBus {
-    greeted: bool,
-}
-
-#[dbus_interface(interface = "org.freedesktop.DBus")]
-impl DBus {
-    /// Returns the unique name assigned to the connection.
-    async fn hello(&mut self) -> fdo::Result<OwnedUniqueName> {
-        if self.greeted {
-            return Err(fdo::Error::InvalidArgs("".to_string()));
-        }
-        let name = OwnedUniqueName::try_from(":zbusd.12345").unwrap();
-        self.greeted = true;
-
-        Ok(name)
-    }
 }
