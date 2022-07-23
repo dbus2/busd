@@ -9,7 +9,7 @@ use tracing::{debug, warn};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 use zbus::Guid;
 
-/// Simple program to greet a person
+/// A simple D-Bus broker.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
