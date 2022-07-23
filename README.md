@@ -1,6 +1,6 @@
 # zbusd
 
-An experimental D-Bus bus (broker) implementation.
+A simple D-Bus bus (broker) implementation.
 
 ## Getting started
 
