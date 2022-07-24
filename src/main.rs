@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use tokio::{select, signal::unix::SignalKind};
-use tracing::{info, error, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
 /// A simple D-Bus broker.
