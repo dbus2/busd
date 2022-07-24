@@ -1,23 +1,25 @@
 use std::{
+    collections::BTreeMap,
     env,
     path::{Path, PathBuf},
 };
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use nix::unistd::Uid;
 use tokio::fs::remove_file;
 use tracing::{debug, warn};
-use zbus::Guid;
+use zbus::{names::OwnedUniqueName, Guid};
 
 use crate::peer::Peer;
 
 /// The bus.
 #[derive(Debug)]
 pub struct Bus {
-    peers: Vec<Peer>,
+    peers: BTreeMap<OwnedUniqueName, Peer>,
     listener: tokio::net::UnixListener,
     guid: Guid,
     socket_path: PathBuf,
+    next_id: usize,
 }
 
 impl Bus {
@@ -38,19 +40,31 @@ impl Bus {
 
         Ok(Self {
             listener: tokio::net::UnixListener::bind(&socket_path)?,
-            peers: vec![],
+            peers: BTreeMap::new(),
             guid: Guid::generate(),
             socket_path,
+            next_id: 0,
         })
     }
 
     pub async fn run(&mut self) -> Result<()> {
         while let Ok((unix_stream, addr)) = self.listener.accept().await {
             debug!("Accepted connection from {:?}", addr);
-            match Peer::new(&self.guid, unix_stream).await {
-                Ok(peer) => self.peers.push(peer),
-                Err(e) => warn!("Failed to establish connection: {}", e),
+            if let Err(e) = Peer::new(&self.guid, self.next_id, unix_stream)
+                .await
+                .and_then(|peer| {
+                    let unique_name = peer.unique_name().clone();
+                    match self.peers.insert(unique_name, peer) {
+                        Some(peer) => {
+                            Err(anyhow!("Unique name `{}` already used", peer.unique_name()))
+                        }
+                        None => Ok(()),
+                    }
+                })
+            {
+                warn!("Failed to establish connection: {}", e);
             }
+            self.next_id += 1;
         }
 
         Ok(())

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use tokio::net::UnixStream;
 use tracing::trace;
@@ -7,37 +9,56 @@ use zbus::{dbus_interface, fdo, names::OwnedUniqueName, Connection, ConnectionBu
 #[derive(Debug)]
 pub struct Peer {
     _conn: Connection,
+    unique_name: Arc<OwnedUniqueName>,
 }
 
 impl Peer {
-    pub async fn new(guid: &Guid, unix_stream: UnixStream) -> Result<Self> {
+    pub async fn new(guid: &Guid, id: usize, unix_stream: UnixStream) -> Result<Self> {
+        let unique_name = Arc::new(OwnedUniqueName::try_from(format!(":zbusd.{}", id)).unwrap());
+
         let conn = ConnectionBuilder::socket(unix_stream)
             .server(guid)
             .p2p()
-            .serve_at("/org/freedesktop/DBus", DBus::default())?
+            .serve_at("/org/freedesktop/DBus", DBus::new(unique_name.clone()))?
             .build()
             .await?;
         trace!("created: {:?}", conn);
 
-        Ok(Self { _conn: conn })
+        Ok(Self {
+            _conn: conn,
+            unique_name,
+        })
+    }
+
+    pub fn unique_name(&self) -> &OwnedUniqueName {
+        &self.unique_name
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct DBus {
     greeted: bool,
+    unique_name: Arc<OwnedUniqueName>,
+}
+
+impl DBus {
+    fn new(unique_name: Arc<OwnedUniqueName>) -> Self {
+        Self {
+            greeted: false,
+            unique_name,
+        }
+    }
 }
 
 #[dbus_interface(interface = "org.freedesktop.DBus")]
 impl DBus {
     /// Returns the unique name assigned to the connection.
-    async fn hello(&mut self) -> fdo::Result<OwnedUniqueName> {
+    async fn hello(&mut self) -> fdo::Result<Arc<OwnedUniqueName>> {
         if self.greeted {
             return Err(fdo::Error::InvalidArgs("".to_string()));
         }
-        let name = OwnedUniqueName::try_from(":zbusd.12345").unwrap();
         self.greeted = true;
 
-        Ok(name)
+        Ok(self.unique_name.clone())
     }
 }
