@@ -1,13 +1,9 @@
+mod bus;
 mod peer;
-
-use std::env;
 
 use anyhow::Result;
 use clap::Parser;
-use nix::unistd::Uid;
-use tracing::{debug, warn};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
-use zbus::Guid;
 
 /// A simple D-Bus broker.
 #[derive(Parser, Debug)]
@@ -27,22 +23,8 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let runtime_dir = args
-        .socket_path
-        .or_else(|| env::var("XDG_RUNTIME_DIR").ok())
-        .unwrap_or_else(|| format!("/run/user/{}", Uid::current()));
-    let path = format!("{}/zbusd-session", runtime_dir);
-    let listener = tokio::net::UnixListener::bind(&path)?;
-    let mut peers = vec![];
-    let guid = Guid::generate();
-
-    while let Ok((unix_stream, addr)) = listener.accept().await {
-        debug!("Accepted connection from {:?}", addr);
-        match peer::Peer::new(&guid, unix_stream).await {
-            Ok(peer) => peers.push(peer),
-            Err(e) => warn!("Failed to establish connection: {}", e),
-        }
-    }
+    let mut bus = bus::Bus::new(args.socket_path).await?;
+    bus.run().await?;
 
     Ok(())
 }
