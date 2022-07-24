@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, path::Path};
 
 use anyhow::Result;
 use nix::unistd::Uid;
@@ -16,11 +16,12 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub async fn new(socket_path: Option<String>) -> Result<Self> {
+    pub async fn new(socket_path: Option<&Path>) -> Result<Self> {
         let runtime_dir = socket_path
-            .or_else(|| env::var("XDG_RUNTIME_DIR").ok())
-            .unwrap_or_else(|| format!("/run/user/{}", Uid::current()));
-        let path = format!("{}/zbusd-session", runtime_dir);
+            .map(Path::to_path_buf)
+            .or_else(|| env::var("XDG_RUNTIME_DIR").ok().map(|p| Path::new(&p).to_path_buf()))
+            .unwrap_or_else(|| Path::new("/run").join("user").join(format!("{}", Uid::current())));
+        let path = runtime_dir.join("zbusd-session");
 
         Ok(Self {
             listener: tokio::net::UnixListener::bind(&path)?,

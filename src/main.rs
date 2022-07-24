@@ -1,6 +1,8 @@
 mod bus;
 mod peer;
 
+use std::path::PathBuf;
+
 use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
@@ -11,7 +13,7 @@ use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 struct Args {
     /// The socket path.
     #[clap(short = 's', long, value_parser)]
-    socket_path: Option<String>,
+    socket_path: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -23,7 +25,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let mut bus = bus::Bus::new(args.socket_path).await?;
+    let mut bus = bus::Bus::new(args.socket_path.as_deref()).await?;
     bus.run().await?;
 
     Ok(())
