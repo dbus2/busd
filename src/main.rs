@@ -5,6 +5,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
+use tokio::{select, signal::unix::SignalKind};
+use tracing::{info, warn};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
 /// A simple D-Bus broker.
@@ -26,7 +28,17 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     let mut bus = bus::Bus::new(args.socket_path.as_deref()).await?;
-    bus.run().await?;
+
+    let mut sig_int = tokio::signal::unix::signal(SignalKind::interrupt())?;
+
+    select! {
+        _ = sig_int.recv() => {
+            info!("Received SIGINT, shutting down..");
+        }
+        _ = bus.run() => {
+            warn!("Bus stopped, shutting down..");
+        }
+    }
 
     Ok(())
 }
