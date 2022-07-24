@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use tokio::{select, signal::unix::SignalKind};
-use tracing::{info, warn};
+use tracing::{info, error, warn};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
 /// A simple D-Bus broker.
@@ -38,6 +38,10 @@ async fn main() -> Result<()> {
         _ = bus.run() => {
             warn!("Bus stopped, shutting down..");
         }
+    }
+
+    if let Err(e) = bus.cleanup().await {
+        error!("Failed to clean up: {}", e);
     }
 
     Ok(())

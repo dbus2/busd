@@ -1,7 +1,11 @@
-use std::{env, path::Path};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Result;
 use nix::unistd::Uid;
+use tokio::fs::remove_file;
 use tracing::{debug, warn};
 use zbus::Guid;
 
@@ -13,6 +17,7 @@ pub struct Bus {
     peers: Vec<Peer>,
     listener: tokio::net::UnixListener,
     guid: Guid,
+    socket_path: PathBuf,
 }
 
 impl Bus {
@@ -29,12 +34,13 @@ impl Bus {
                     .join("user")
                     .join(format!("{}", Uid::current()))
             });
-        let path = runtime_dir.join("zbusd-session");
+        let socket_path = runtime_dir.join("zbusd-session");
 
         Ok(Self {
-            listener: tokio::net::UnixListener::bind(&path)?,
+            listener: tokio::net::UnixListener::bind(&socket_path)?,
             peers: vec![],
             guid: Guid::generate(),
+            socket_path,
         })
     }
 
@@ -48,5 +54,10 @@ impl Bus {
         }
 
         Ok(())
+    }
+
+    // AsyncDrop would have been nice!
+    pub async fn cleanup(self) -> Result<()> {
+        remove_file(&self.socket_path).await.map_err(Into::into)
     }
 }
