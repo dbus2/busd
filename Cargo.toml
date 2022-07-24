@@ -14,3 +14,5 @@ clap = { version = "3.2.6", features = ["derive"] }
 tracing = "0.1.34"
 tracing-subscriber = { version = "0.3.11", features = ["env-filter" , "fmt"], default-features = false }
 anyhow = "1.0.58"
+# Explicitly depend on serde to enable `rc` feature.
+serde = { version = "1.0.140", features = ["rc"] }
