@@ -19,8 +19,16 @@ impl Bus {
     pub async fn new(socket_path: Option<&Path>) -> Result<Self> {
         let runtime_dir = socket_path
             .map(Path::to_path_buf)
-            .or_else(|| env::var("XDG_RUNTIME_DIR").ok().map(|p| Path::new(&p).to_path_buf()))
-            .unwrap_or_else(|| Path::new("/run").join("user").join(format!("{}", Uid::current())));
+            .or_else(|| {
+                env::var("XDG_RUNTIME_DIR")
+                    .ok()
+                    .map(|p| Path::new(&p).to_path_buf())
+            })
+            .unwrap_or_else(|| {
+                Path::new("/run")
+                    .join("user")
+                    .join(format!("{}", Uid::current()))
+            });
         let path = runtime_dir.join("zbusd-session");
 
         Ok(Self {

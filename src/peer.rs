@@ -1,6 +1,6 @@
 use anyhow::Result;
-use tracing::trace;
 use tokio::net::UnixStream;
+use tracing::trace;
 use zbus::{dbus_interface, fdo, names::OwnedUniqueName, Connection, ConnectionBuilder, Guid};
 
 /// A peer connection.
