@@ -55,7 +55,7 @@ impl DBus {
     /// Returns the unique name assigned to the connection.
     async fn hello(&mut self) -> fdo::Result<Arc<OwnedUniqueName>> {
         if self.greeted {
-            return Err(fdo::Error::InvalidArgs("".to_string()));
+            return Err(fdo::Error::Failed("Can only call `Hello` method once".to_string()));
         }
         self.greeted = true;
 
