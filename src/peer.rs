@@ -20,8 +20,10 @@ impl Peer {
             .server(guid)
             .p2p()
             .serve_at("/org/freedesktop/DBus", DBus::new(unique_name.clone()))?
+            .name("org.freedesktop.DBus")?
             .build()
             .await?;
+        conn.set_unique_name("org.freedesktop.DBus")?;
         trace!("created: {:?}", conn);
 
         Ok(Self {
