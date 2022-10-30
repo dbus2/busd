@@ -16,3 +16,5 @@ tracing-subscriber = { version = "0.3.11", features = ["env-filter" , "fmt"], de
 anyhow = "1.0.58"
 # Explicitly depend on serde to enable `rc` feature.
 serde = { version = "1.0.140", features = ["rc"] }
+futures-util = "0.3.23"
+parking_lot = "0.12.1"

@@ -3,12 +3,14 @@ use std::sync::Arc;
 use anyhow::Result;
 use tokio::net::UnixStream;
 use tracing::trace;
-use zbus::{dbus_interface, fdo, names::OwnedUniqueName, Connection, ConnectionBuilder, Guid};
+use zbus::{
+    dbus_interface, fdo, names::OwnedUniqueName, Connection, ConnectionBuilder, Guid, MessageStream,
+};
 
 /// A peer connection.
 #[derive(Debug)]
 pub struct Peer {
-    _conn: Connection,
+    conn: Connection,
     unique_name: Arc<OwnedUniqueName>,
 }
 
@@ -26,14 +28,19 @@ impl Peer {
         conn.set_unique_name("org.freedesktop.DBus")?;
         trace!("created: {:?}", conn);
 
-        Ok(Self {
-            _conn: conn,
-            unique_name,
-        })
+        Ok(Self { conn, unique_name })
     }
 
     pub fn unique_name(&self) -> &OwnedUniqueName {
         &self.unique_name
+    }
+
+    pub fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
+    pub fn stream(&self) -> MessageStream {
+        MessageStream::from(&self.conn)
     }
 }
 
