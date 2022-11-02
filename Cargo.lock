@@ -1035,6 +1035,7 @@ dependencies = [
  "anyhow",
  "clap",
  "enumflags2",
+ "fastrand",
  "futures-util",
  "nix 0.23.1",
  "parking_lot",
