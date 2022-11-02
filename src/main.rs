@@ -1,4 +1,5 @@
 mod bus;
+mod name_registry;
 mod peer;
 
 use std::path::PathBuf;

@@ -1034,6 +1034,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "enumflags2",
  "futures-util",
  "nix 0.23.1",
  "parking_lot",

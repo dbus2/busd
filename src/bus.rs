@@ -15,7 +15,7 @@ use zbus::{
     Guid, MessageField, MessageFieldCode, MessageStream, MessageType,
 };
 
-use crate::peer::Peer;
+use crate::{name_registry::NameRegistry, peer::Peer};
 
 /// The bus.
 #[derive(Debug)]
@@ -25,6 +25,7 @@ pub struct Bus {
     guid: Guid,
     socket_path: PathBuf,
     next_id: usize,
+    name_registry: NameRegistry,
 }
 
 impl Bus {
@@ -49,13 +50,21 @@ impl Bus {
             guid: Guid::generate(),
             socket_path,
             next_id: 0,
+            name_registry: NameRegistry::new(),
         })
     }
 
     pub async fn run(&mut self) {
         while let Ok((unix_stream, addr)) = self.listener.accept().await {
             debug!("Accepted connection from {:?}", addr);
-            match Peer::new(&self.guid, self.next_id, unix_stream).await {
+            match Peer::new(
+                &self.guid,
+                self.next_id,
+                unix_stream,
+                self.name_registry.clone(),
+            )
+            .await
+            {
                 Ok(peer) => self.peers.add(peer),
                 Err(e) => warn!("Failed to establish connection: {}", e),
             }
