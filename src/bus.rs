@@ -30,19 +30,19 @@ pub struct Bus {
 
 impl Bus {
     pub async fn new(socket_path: Option<&Path>) -> Result<Self> {
-        let runtime_dir = socket_path
+        let socket_path = socket_path
             .map(Path::to_path_buf)
             .or_else(|| {
                 env::var("XDG_RUNTIME_DIR")
                     .ok()
-                    .map(|p| Path::new(&p).to_path_buf())
+                    .map(|p| Path::new(&p).to_path_buf().join("zbusd-session"))
             })
             .unwrap_or_else(|| {
                 Path::new("/run")
                     .join("user")
                     .join(format!("{}", Uid::current()))
+                    .join("zbusd-session")
             });
-        let socket_path = runtime_dir.join("zbusd-session");
 
         Ok(Self {
             listener: tokio::net::UnixListener::bind(&socket_path)?,
