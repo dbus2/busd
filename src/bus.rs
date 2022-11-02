@@ -50,7 +50,7 @@ impl Bus {
             guid: Guid::generate(),
             socket_path,
             next_id: 0,
-            name_registry: NameRegistry::new(),
+            name_registry: NameRegistry::default(),
         })
     }
 

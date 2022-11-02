@@ -27,12 +27,6 @@ pub struct NameOwner {
 }
 
 impl NameRegistry {
-    pub fn new() -> Self {
-        Self {
-            names: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
-
     pub fn request_name(
         &self,
         name: OwnedWellKnownName,
@@ -112,5 +106,13 @@ impl NameRegistry {
             .read()
             .get(name.as_str())
             .map(|e| e.owner.unique_name.clone())
+    }
+}
+
+impl Default for NameRegistry {
+    fn default() -> Self {
+        Self {
+            names: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 }
