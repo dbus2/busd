@@ -1,16 +1,16 @@
 [package]
-name = "zbusd"
+name = "dbuz"
 version = "0.1.0"
 description = "A simple D-Bus bus (broker) implementation"
 edition = "2021"
 
 [lib]
-name = "zbusd"
+name = "dbuz"
 path = "src/lib.rs"
 
 [[bin]]
-name = "zbusd"
-path = "src/bin/zbusd.rs"
+name = "dbuz"
+path = "src/bin/dbuz.rs"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

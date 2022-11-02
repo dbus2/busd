@@ -1,5 +1,6 @@
 use std::{iter::repeat_with, path::PathBuf};
 
+use dbuz::bus::Bus;
 use tokio::select;
 use tracing::instrument;
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
@@ -8,7 +9,6 @@ use zbus::{
     names::WellKnownName,
     CacheProperties, ConnectionBuilder,
 };
-use zbusd::bus::Bus;
 
 // TODO: timeout through `ntest`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

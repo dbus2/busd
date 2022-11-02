@@ -1,5 +1,5 @@
-extern crate zbusd;
-use zbusd::bus;
+extern crate dbuz;
+use dbuz::bus;
 
 use std::path::PathBuf;
 

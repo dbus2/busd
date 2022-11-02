@@ -27,7 +27,7 @@ impl Peer {
         unix_stream: UnixStream,
         name_registry: NameRegistry,
     ) -> Result<Self> {
-        let unique_name = Arc::new(OwnedUniqueName::try_from(format!(":zbusd.{}", id)).unwrap());
+        let unique_name = Arc::new(OwnedUniqueName::try_from(format!(":dbuz.{}", id)).unwrap());
 
         let conn = ConnectionBuilder::socket(unix_stream)
             .server(guid)

@@ -137,6 +137,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "dbuz"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "enumflags2",
+ "fastrand",
+ "futures-util",
+ "nix 0.23.1",
+ "parking_lot",
+ "serde",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zbus",
+]
+
+[[package]]
 name = "derivative"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1026,24 +1044,6 @@ dependencies = [
  "serde",
  "static_assertions",
  "zvariant",
-]
-
-[[package]]
-name = "zbusd"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "enumflags2",
- "fastrand",
- "futures-util",
- "nix 0.23.1",
- "parking_lot",
- "serde",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "zbus",
 ]
 
 [[package]]

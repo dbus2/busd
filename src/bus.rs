@@ -35,13 +35,13 @@ impl Bus {
             .or_else(|| {
                 env::var("XDG_RUNTIME_DIR")
                     .ok()
-                    .map(|p| Path::new(&p).to_path_buf().join("zbusd-session"))
+                    .map(|p| Path::new(&p).to_path_buf().join("dbuz-session"))
             })
             .unwrap_or_else(|| {
                 Path::new("/run")
                     .join("user")
                     .join(format!("{}", Uid::current()))
-                    .join("zbusd-session")
+                    .join("dbuz-session")
             });
 
         Ok(Self {
