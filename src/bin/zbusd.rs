@@ -1,6 +1,5 @@
-mod bus;
-mod name_registry;
-mod peer;
+extern crate zbusd;
+use zbusd::bus;
 
 use std::path::PathBuf;
 
