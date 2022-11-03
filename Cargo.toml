@@ -1,9 +1,15 @@
 [package]
 name = "dbuz"
 version = "0.1.0"
+authors = ["Zeeshan Ali Khan <zeeshanak@gnome.org>"]
 description = "A simple D-Bus bus (broker) implementation"
 edition = "2021"
 license = "MIT"
+readme = "README.md"
+rust-version = "1.60"
+repository = "https://gitlab.freedesktop.org/zeenix/dbuz/"
+keywords = ["D-Bus", "DBus", "IPC"]
+categories = ["network-programming"]
 
 [lib]
 name = "dbuz"
