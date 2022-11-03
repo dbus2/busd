@@ -13,7 +13,7 @@ use zbus::{
 // TODO: timeout through `ntest`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[instrument]
-async fn test() {
+async fn name_ownership_changes() {
     FmtSubscriber::builder()
         .with_env_filter(EnvFilter::from_default_env())
         .finish()
