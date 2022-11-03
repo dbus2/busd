@@ -19,9 +19,6 @@ path = "src/lib.rs"
 name = "dbuz"
 path = "src/bin/dbuz.rs"
 
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 zbus = { git = "https://gitlab.freedesktop.org/dbus/zbus/", features = ["tokio"], default-features = false }
 nix = "0.25.0"
