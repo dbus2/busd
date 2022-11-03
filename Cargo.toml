@@ -3,6 +3,7 @@ name = "dbuz"
 version = "0.1.0"
 description = "A simple D-Bus bus (broker) implementation"
 edition = "2021"
+license = "MIT"
 
 [lib]
 name = "dbuz"
