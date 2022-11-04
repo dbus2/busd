@@ -23,8 +23,16 @@ async fn name_ownership_changes() {
         .finish()
         .init();
 
+    let dir = PathBuf::from("/tmp").join("dbuz-test");
+    let res = tokio::fs::create_dir(&dir).await;
+    if let Err(e) = &res {
+        // It's fine if it already exists.
+        if e.kind() != std::io::ErrorKind::AlreadyExists {
+            res.unwrap();
+        }
+    }
     let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
-    let path = PathBuf::from("/tmp").join(s);
+    let path = dir.join(s);
 
     let mut bus = Bus::new(Some(&*path)).await.unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel();
