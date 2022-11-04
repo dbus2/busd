@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use futures_util::{stream::StreamExt, SinkExt};
 use parking_lot::RwLock;
 use std::{collections::BTreeMap, sync::Arc};
@@ -61,20 +61,9 @@ impl Peers {
                                 continue;
                             }
                         };
-                        let conn = self
-                            .0
-                            .read()
-                            .get(dest.as_str())
-                            .map(|peer| peer.conn().clone());
-                        match conn {
-                            Some(mut conn) => {
-                                if let Err(e) = conn.send((*msg).clone()).await {
-                                    warn!("failed to send message: {}", e);
-                                }
-                            }
-                            None => {
-                                warn!("no peer for destination `{}`", dest);
-                            }
+
+                        if let Err(e) = self.send_msg(msg.clone(), dest.clone().into()).await {
+                            warn!("{}", e);
                         }
                     }
                     MessageType::Signal => todo!(),
@@ -87,5 +76,17 @@ impl Peers {
         }
 
         Ok(())
+    }
+
+    async fn send_msg(&self, msg: Arc<zbus::Message>, destination: BusName<'_>) -> Result<()> {
+        let conn = self
+            .0
+            .read()
+            .get(destination.as_str())
+            .map(|peer| peer.conn().clone());
+        match conn {
+            Some(mut conn) => conn.send(msg).await.context("failed to send message"),
+            None => Err(anyhow!("no peer for destination `{}`", destination)),
+        }
     }
 }
