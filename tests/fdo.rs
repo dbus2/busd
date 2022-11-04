@@ -1,7 +1,4 @@
-use std::{
-    iter::repeat_with,
-    path::{Path, PathBuf},
-};
+use std::{env::temp_dir, iter::repeat_with, path::Path};
 
 use anyhow::ensure;
 use dbuz::bus::Bus;
@@ -23,7 +20,7 @@ async fn name_ownership_changes() {
         .finish()
         .init();
 
-    let dir = PathBuf::from("/tmp").join("dbuz-test");
+    let dir = temp_dir().join("dbuz-test");
     let res = tokio::fs::create_dir(&dir).await;
     if let Err(e) = &res {
         // It's fine if it already exists.
