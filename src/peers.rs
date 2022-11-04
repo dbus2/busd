@@ -4,23 +4,29 @@ use parking_lot::RwLock;
 use std::{collections::BTreeMap, sync::Arc};
 use tracing::warn;
 use zbus::{
-    names::{BusName, OwnedUniqueName},
+    names::{BusName, OwnedUniqueName, UniqueName},
     MessageField, MessageFieldCode, MessageStream, MessageType,
 };
 
-use crate::peer::Peer;
+use crate::{name_registry::NameRegistry, peer::Peer};
 
 #[derive(Clone, Debug)]
-pub struct Peers(Arc<RwLock<BTreeMap<OwnedUniqueName, Peer>>>);
+pub struct Peers {
+    peers: Arc<RwLock<BTreeMap<OwnedUniqueName, Peer>>>,
+    name_registry: NameRegistry,
+}
 
 impl Peers {
-    pub fn new() -> Self {
-        Self(Arc::new(RwLock::new(BTreeMap::new())))
+    pub fn new(name_registry: NameRegistry) -> Self {
+        Self {
+            peers: Arc::new(RwLock::new(BTreeMap::new())),
+            name_registry,
+        }
     }
 
     pub fn add(&self, peer: Peer) {
         let unique_name = peer.unique_name().clone();
-        let mut peers = self.0.write();
+        let mut peers = self.peers.write();
         match peers.get(&unique_name) {
             Some(peer) => panic!(
                 "Unique name `{}` re-used. We're in deep trouble if this happens",
@@ -46,25 +52,19 @@ impl Peers {
                                 continue;
                             }
                         };
-                        let dest = match fields.get_field(MessageFieldCode::Destination) {
-                            Some(MessageField::Destination(BusName::Unique(dest))) => dest,
-                            Some(MessageField::Destination(BusName::WellKnown(name))) => {
-                                warn!("destination `{name}` is well-known name. Only unique names supported");
-                                continue;
+                        match fields.get_field(MessageFieldCode::Destination) {
+                            Some(MessageField::Destination(dest)) => {
+                                if let Err(e) = self.send_msg(msg.clone(), dest.clone()).await {
+                                    warn!("{}", e);
+                                }
                             }
                             Some(_) => {
                                 warn!("failed to parse message: Missing destination");
-                                continue;
                             }
                             None => {
                                 warn!("missing destination field");
-                                continue;
                             }
                         };
-
-                        if let Err(e) = self.send_msg(msg.clone(), dest.clone().into()).await {
-                            warn!("{}", e);
-                        }
                     }
                     MessageType::Signal => todo!(),
                     MessageType::Invalid => todo!(),
@@ -79,8 +79,27 @@ impl Peers {
     }
 
     async fn send_msg(&self, msg: Arc<zbus::Message>, destination: BusName<'_>) -> Result<()> {
+        match destination {
+            BusName::Unique(dest) => self.send_msg_to_unique_name(msg, dest.clone().into()).await,
+            BusName::WellKnown(name) => {
+                let dest = match self.name_registry.lookup(name.clone()) {
+                    Some(dest) => dest,
+                    None => {
+                        return Err(anyhow!("unknown destination: {}", name));
+                    }
+                };
+                self.send_msg_to_unique_name(msg, (&*dest).into()).await
+            }
+        }
+    }
+
+    async fn send_msg_to_unique_name(
+        &self,
+        msg: Arc<zbus::Message>,
+        destination: UniqueName<'_>,
+    ) -> Result<()> {
         let conn = self
-            .0
+            .peers
             .read()
             .get(destination.as_str())
             .map(|peer| peer.conn().clone());

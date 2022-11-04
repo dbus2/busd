@@ -36,14 +36,15 @@ impl Bus {
                     .join(format!("{}", Uid::current()))
                     .join("dbuz-session")
             });
+        let name_registry = NameRegistry::default();
 
         Ok(Self {
             listener: tokio::net::UnixListener::bind(&socket_path)?,
-            peers: Peers::new(),
+            peers: Peers::new(name_registry.clone()),
             guid: Guid::generate(),
             socket_path,
             next_id: 0,
-            name_registry: NameRegistry::default(),
+            name_registry: name_registry,
         })
     }
 
