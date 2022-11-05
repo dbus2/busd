@@ -59,7 +59,7 @@ impl Bus {
             )
             .await
             {
-                Ok(peer) => self.peers.add(peer),
+                Ok(peer) => self.peers.add(peer).await,
                 Err(e) => warn!("Failed to establish connection: {}", e),
             }
             self.next_id += 1;

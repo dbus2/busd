@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use futures_util::{stream::StreamExt, SinkExt};
-use parking_lot::RwLock;
 use std::{collections::BTreeMap, sync::Arc};
+use tokio::sync::RwLock;
 use tracing::warn;
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
@@ -24,9 +24,9 @@ impl Peers {
         }
     }
 
-    pub fn add(&self, peer: Peer) {
+    pub async fn add(&self, peer: Peer) {
         let unique_name = peer.unique_name().clone();
-        let mut peers = self.peers.write();
+        let mut peers = self.peers.write().await;
         match peers.get(&unique_name) {
             Some(peer) => panic!(
                 "Unique name `{}` re-used. We're in deep trouble if this happens",
@@ -101,6 +101,7 @@ impl Peers {
         let conn = self
             .peers
             .read()
+            .await
             .get(destination.as_str())
             .map(|peer| peer.conn().clone());
         match conn {
