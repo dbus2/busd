@@ -44,7 +44,10 @@ impl Peers {
         while let Some(msg) = peer_stream.next().await {
             match msg {
                 Ok(msg) => match msg.message_type() {
-                    MessageType::MethodCall | MessageType::MethodReturn | MessageType::Error => {
+                    MessageType::MethodCall
+                    | MessageType::MethodReturn
+                    | MessageType::Error
+                    | MessageType::Signal => {
                         let fields = match msg.fields() {
                             Ok(fields) => fields,
                             Err(e) => {
@@ -62,11 +65,15 @@ impl Peers {
                                 warn!("failed to parse message: Missing destination");
                             }
                             None => {
-                                warn!("missing destination field");
+                                if msg.message_type() == MessageType::Signal {
+                                    // FIXME: should be based on match rules.
+                                    self.send_msg_to_all(msg).await;
+                                } else {
+                                    warn!("missing destination field");
+                                }
                             }
                         };
                     }
-                    MessageType::Signal => todo!(),
                     MessageType::Invalid => todo!(),
                 },
                 Err(e) => {
@@ -107,6 +114,24 @@ impl Peers {
         match conn {
             Some(mut conn) => conn.send(msg).await.context("failed to send message"),
             None => Err(anyhow!("no peer for destination `{}`", destination)),
+        }
+    }
+
+    async fn send_msg_to_all(&self, msg: Arc<zbus::Message>) {
+        for mut conn in self
+            .peers
+            .read()
+            .await
+            .values()
+            .map(|peer| peer.conn().clone())
+        {
+            if let Err(e) = conn
+                .send(msg.clone())
+                .await
+                .context("failed to send message")
+            {
+                warn!("Error sending message: {}", e);
+            }
         }
     }
 }
