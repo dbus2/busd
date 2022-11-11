@@ -22,7 +22,7 @@ pub struct NameEntry {
 
 #[derive(Clone, Debug)]
 pub struct NameOwner {
-    unique_name: Arc<OwnedUniqueName>,
+    unique_name: OwnedUniqueName,
     allow_replacement: bool,
 }
 
@@ -30,7 +30,7 @@ impl NameRegistry {
     pub fn request_name(
         &self,
         name: OwnedWellKnownName,
-        unique_name: Arc<OwnedUniqueName>,
+        unique_name: OwnedUniqueName,
         flags: BitFlags<RequestNameFlags>,
     ) -> RequestNameReply {
         // TODO: Emit all signals.
@@ -101,7 +101,7 @@ impl NameRegistry {
         }
     }
 
-    pub fn lookup(&self, name: WellKnownName) -> Option<Arc<OwnedUniqueName>> {
+    pub fn lookup(&self, name: WellKnownName) -> Option<OwnedUniqueName> {
         self.names
             .read()
             .get(name.as_str())

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use enumflags2::BitFlags;
 use tokio::net::UnixStream;
@@ -17,7 +15,7 @@ use crate::name_registry::NameRegistry;
 #[derive(Debug)]
 pub struct Peer {
     conn: Connection,
-    unique_name: Arc<OwnedUniqueName>,
+    unique_name: OwnedUniqueName,
 }
 
 impl Peer {
@@ -27,7 +25,7 @@ impl Peer {
         unix_stream: UnixStream,
         name_registry: NameRegistry,
     ) -> Result<Self> {
-        let unique_name = Arc::new(OwnedUniqueName::try_from(format!(":dbuz.{}", id)).unwrap());
+        let unique_name = OwnedUniqueName::try_from(format!(":dbuz.{}", id)).unwrap();
 
         let conn = ConnectionBuilder::socket(unix_stream)
             .server(guid)
@@ -61,12 +59,12 @@ impl Peer {
 #[derive(Debug)]
 struct DBus {
     greeted: bool,
-    unique_name: Arc<OwnedUniqueName>,
+    unique_name: OwnedUniqueName,
     name_registry: NameRegistry,
 }
 
 impl DBus {
-    fn new(unique_name: Arc<OwnedUniqueName>, name_registry: NameRegistry) -> Self {
+    fn new(unique_name: OwnedUniqueName, name_registry: NameRegistry) -> Self {
         Self {
             greeted: false,
             unique_name,
@@ -78,7 +76,7 @@ impl DBus {
 #[dbus_interface(interface = "org.freedesktop.DBus")]
 impl DBus {
     /// Returns the unique name assigned to the connection.
-    async fn hello(&mut self) -> fdo::Result<Arc<OwnedUniqueName>> {
+    async fn hello(&mut self) -> fdo::Result<OwnedUniqueName> {
         if self.greeted {
             return Err(fdo::Error::Failed(
                 "Can only call `Hello` method once".to_string(),
@@ -106,13 +104,13 @@ impl DBus {
     }
 
     /// Returns the unique connection name of the primary owner of the name given.
-    fn get_name_owner(&self, name: OwnedBusName) -> fdo::Result<Arc<OwnedUniqueName>> {
+    fn get_name_owner(&self, name: OwnedBusName) -> fdo::Result<OwnedUniqueName> {
         match name.into_inner() {
             BusName::WellKnown(name) => self.name_registry.lookup(name).ok_or_else(|| {
                 fdo::Error::NameHasNoOwner("Name is not owned by anyone. Take it!".to_string())
             }),
             // FIXME: Not good enough. We need to check if name is actually owned.
-            BusName::Unique(name) => Ok(Arc::new(name.into())),
+            BusName::Unique(name) => Ok(name.into()),
         }
     }
 }
