@@ -45,7 +45,7 @@ async fn name_ownership_changes() {
         bus
     });
 
-    let ret = name_ownership_changes_client(&*path, tx).await;
+    let ret = name_ownership_changes_client(&path, tx).await;
     let bus = handle.await.unwrap();
     bus.cleanup().await.unwrap();
     ret.unwrap();

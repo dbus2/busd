@@ -44,7 +44,7 @@ impl Bus {
             guid: Guid::generate(),
             socket_path,
             next_id: 0,
-            name_registry: name_registry,
+            name_registry,
         })
     }
 

@@ -87,7 +87,7 @@ impl Peers {
 
     async fn send_msg(&self, msg: Arc<zbus::Message>, destination: BusName<'_>) -> Result<()> {
         match destination {
-            BusName::Unique(dest) => self.send_msg_to_unique_name(msg, dest.clone().into()).await,
+            BusName::Unique(dest) => self.send_msg_to_unique_name(msg, dest.clone()).await,
             BusName::WellKnown(name) => {
                 let dest = match self.name_registry.lookup(name.clone()) {
                     Some(dest) => dest,
