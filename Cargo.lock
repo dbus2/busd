@@ -1034,9 +1034,8 @@ checksum = "c811ca4a8c853ef420abd8592ba53ddbbac90410fab6903b3e79972a631f7680"
 
 [[package]]
 name = "zbus"
-version = "3.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78a0b85c5608c27d2306d67e955b9c6e23a42d824205c85038a7afbe19c0ae22"
+version = "3.5.0"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#3072d28c878263f8f5e6a59ba12457c094989516"
 dependencies = [
  "async-broadcast",
  "async-recursion",
@@ -1070,9 +1069,8 @@ dependencies = [
 
 [[package]]
 name = "zbus_macros"
-version = "3.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b18018648e7e10ed856809befe7309002b87b2b12d5b282cb5040d7974b58677"
+version = "3.5.0"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#3072d28c878263f8f5e6a59ba12457c094989516"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1084,8 +1082,7 @@ dependencies = [
 [[package]]
 name = "zbus_names"
 version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41a408fd8a352695690f53906dc7fd036be924ec51ea5e05666ff42685ed0af5"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#3072d28c878263f8f5e6a59ba12457c094989516"
 dependencies = [
  "serde",
  "static_assertions",
@@ -1095,8 +1092,7 @@ dependencies = [
 [[package]]
 name = "zvariant"
 version = "3.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b794fb7f59af4105697b0449ba31731ee5dbb3e773a17dbdf3d36206ea1b1644"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#3072d28c878263f8f5e6a59ba12457c094989516"
 dependencies = [
  "byteorder",
  "enumflags2",
@@ -1109,8 +1105,7 @@ dependencies = [
 [[package]]
 name = "zvariant_derive"
 version = "3.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd58d4b6c8e26d3dd2149c8c40c6613ef6451b9885ff1296d1ac86c388351a54"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#3072d28c878263f8f5e6a59ba12457c094989516"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
