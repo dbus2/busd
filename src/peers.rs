@@ -67,7 +67,7 @@ impl Peers {
                             None => {
                                 if msg.message_type() == MessageType::Signal {
                                     // FIXME: should be based on match rules.
-                                    self.send_msg_to_all(msg).await;
+                                    self.broadcast_msg(msg).await;
                                 } else {
                                     warn!("missing destination field");
                                 }
@@ -117,7 +117,7 @@ impl Peers {
         }
     }
 
-    async fn send_msg_to_all(&self, msg: Arc<zbus::Message>) {
+    async fn broadcast_msg(&self, msg: Arc<zbus::Message>) {
         for peer in self.peers.read().await.values() {
             if !peer.interested(&msg).await {
                 continue;
