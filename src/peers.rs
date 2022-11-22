@@ -118,14 +118,13 @@ impl Peers {
     }
 
     async fn send_msg_to_all(&self, msg: Arc<zbus::Message>) {
-        for mut conn in self
-            .peers
-            .read()
-            .await
-            .values()
-            .map(|peer| peer.conn().clone())
-        {
-            if let Err(e) = conn
+        for peer in self.peers.read().await.values() {
+            if !peer.interested(&msg).await {
+                continue;
+            }
+
+            if let Err(e) = peer
+                .conn()
                 .send(msg.clone())
                 .await
                 .context("failed to send message")

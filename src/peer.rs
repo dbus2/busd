@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anyhow::Result;
 use enumflags2::BitFlags;
 use tokio::net::UnixStream;
@@ -5,8 +7,10 @@ use tracing::trace;
 use zbus::{
     dbus_interface,
     fdo::{self, ReleaseNameReply, RequestNameFlags, RequestNameReply},
-    names::{BusName, OwnedBusName, OwnedUniqueName, OwnedWellKnownName},
-    Connection, ConnectionBuilder, Guid, MessageStream,
+    names::{
+        BusName, InterfaceName, OwnedBusName, OwnedUniqueName, OwnedWellKnownName, UniqueName,
+    },
+    Connection, ConnectionBuilder, Guid, MatchRulePathSpec, MessageStream, OwnedMatchRule,
 };
 
 use crate::name_registry::NameRegistry;
@@ -54,6 +58,118 @@ impl Peer {
     pub fn stream(&self) -> MessageStream {
         MessageStream::from(&self.conn)
     }
+
+    /// # Panics
+    ///
+    /// if header, SENDER or DESTINATION is not set.
+    pub async fn interested(&self, msg: &zbus::Message) -> bool {
+        let dbus_ref = self
+            .conn
+            .object_server()
+            .interface::<_, DBus>("/org/freedesktop/DBus")
+            .await
+            .expect("DBus interface not found");
+        let dbus = dbus_ref.get().await;
+        let hdr = msg.header().expect("received message without header");
+
+        dbus.match_rules.iter().any(|rule| {
+            // Start with message type.
+            if let Some(msg_type) = rule.msg_type() {
+                if msg_type != msg.message_type() {
+                    return false;
+                }
+            }
+
+            // Then check sender.
+            let sender = rule.sender().cloned().and_then(|name| match name {
+                BusName::WellKnown(name) => dbus.name_registry.lookup(name).as_deref().cloned(),
+                BusName::Unique(name) => Some(name),
+            });
+            if let Some(sender) = sender {
+                if sender
+                    != hdr
+                        .sender()
+                        .expect("SENDER field unset")
+                        .expect("SENDER field unset")
+                        .clone()
+                {
+                    return false;
+                }
+            }
+
+            // The interface.
+            if let Some(interface) = rule.interface() {
+                match msg.interface().as_ref() {
+                    Some(msg_interface) if interface != msg_interface => return false,
+                    Some(_) => (),
+                    None => return false,
+                }
+            }
+
+            // The member.
+            if let Some(member) = rule.member() {
+                match msg.member().as_ref() {
+                    Some(msg_member) if member != msg_member => return false,
+                    Some(_) => (),
+                    None => return false,
+                }
+            }
+
+            // The destination.
+            if let Some(destination) = rule.destination() {
+                let msg_destination: UniqueName = match hdr
+                    .destination()
+                    .expect("DESTINATION field unset")
+                    .expect("DESTINATION field unset")
+                    .clone()
+                {
+                    BusName::WellKnown(name) => match dbus.name_registry.lookup(name) {
+                        Some(name) => name.into(),
+                        None => return false,
+                    },
+                    BusName::Unique(name) => name,
+                };
+                if destination != &msg_destination {
+                    return false;
+                }
+            }
+
+            // The path.
+            if let Some(path_spec) = rule.path_spec() {
+                let msg_path = match msg.path() {
+                    Some(p) => p,
+                    None => return false,
+                };
+                match path_spec {
+                    MatchRulePathSpec::Path(path) if path != &msg_path => return false,
+                    MatchRulePathSpec::PathNamespace(path_ns)
+                        if !msg_path.starts_with(path_ns.as_str()) =>
+                    {
+                        return false;
+                    }
+                    MatchRulePathSpec::Path(_) | MatchRulePathSpec::PathNamespace(_) => (),
+                }
+            }
+
+            // The arg0 namespace.
+            if let Some(arg0_ns) = rule.arg0namespace() {
+                if let Ok(arg0) = msg.body::<InterfaceName<'_>>() {
+                    if !arg0.starts_with(arg0_ns.as_str()) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+
+            // TODO: Arg matches
+            //
+            // But how? We can't just deserialize specific args from the body w/o knowing the types
+            // of all args. We can support arg0 at least though (just like `arg0namespace` above).
+
+            true
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -61,6 +177,7 @@ struct DBus {
     greeted: bool,
     unique_name: OwnedUniqueName,
     name_registry: NameRegistry,
+    match_rules: HashSet<OwnedMatchRule>,
 }
 
 impl DBus {
@@ -69,6 +186,7 @@ impl DBus {
             greeted: false,
             unique_name,
             name_registry,
+            match_rules: HashSet::new(),
         }
     }
 }
@@ -112,5 +230,21 @@ impl DBus {
             // FIXME: Not good enough. We need to check if name is actually owned.
             BusName::Unique(name) => Ok(name.into()),
         }
+    }
+
+    /// Adds a match rule to match messages going through the message bus
+    fn add_match(&mut self, rule: OwnedMatchRule) {
+        self.match_rules.insert(rule);
+    }
+
+    /// Removes the first rule that matches.
+    fn remove_match(&mut self, rule: OwnedMatchRule) -> fdo::Result<()> {
+        if !self.match_rules.remove(&rule) {
+            return Err(fdo::Error::MatchRuleNotFound(
+                "No such match rule".to_string(),
+            ));
+        }
+
+        Ok(())
     }
 }

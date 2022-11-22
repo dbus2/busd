@@ -1,17 +1,19 @@
-use std::{env::temp_dir, iter::repeat_with};
+use std::{env::temp_dir, iter::repeat_with, time::Duration};
 
 use anyhow::anyhow;
 use dbuz::bus::Bus;
-use futures_util::stream::StreamExt;
+use futures_util::{pin_mut, stream::StreamExt};
 use ntest::timeout;
 use tokio::{
     select,
     sync::mpsc::{channel, Sender},
+    time::timeout,
 };
 use tracing::instrument;
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 use zbus::{
-    dbus_interface, dbus_proxy, fdo, CacheProperties, Connection, ConnectionBuilder, SignalContext,
+    dbus_interface, dbus_proxy, fdo, CacheProperties, Connection, ConnectionBuilder, MessageStream,
+    SignalContext,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -59,9 +61,6 @@ async fn greet() {
             .map(|_| service_conn),
         Err(e) => Err(e),
     };
-    // Ensure we don't end up waiting for service and/or client forever if they error out.
-    tx.send(()).await.unwrap();
-    tx.send(()).await.unwrap();
     let bus = handle.await.unwrap();
     bus.cleanup().await.unwrap();
     ret.unwrap();
@@ -134,7 +133,19 @@ async fn greet_client(socket_addr: &str, tx: Sender<()>) -> anyhow::Result<()> {
     assert_eq!(args.name, "Maria");
     assert_eq!(args.count, 1);
 
-    tx.send(()).await.unwrap();
+    // Now let's unsubcribe from the signal and ensure we don't receive it anymore.
+    let msg_stream = MessageStream::from(&conn).filter_map(|msg| async {
+        let msg = msg.ok()?;
+        Greeted::from_message(msg)
+    });
+    pin_mut!(msg_stream);
+    drop(greeted_stream);
+    let _ = proxy.say_hello("Maria").await?;
+    timeout(Duration::from_millis(10), msg_stream.next())
+        .await
+        .unwrap_err();
+
+    let _ = tx.send(()).await;
 
     Ok(())
 }
