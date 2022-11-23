@@ -8,7 +8,10 @@ use tokio::{select, sync::mpsc::channel, time::timeout};
 use tracing::instrument;
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 use zbus::{
-    dbus_interface, dbus_proxy, fdo, CacheProperties, Connection, ConnectionBuilder, MessageStream,
+    dbus_interface, dbus_proxy,
+    fdo::{self, DBusProxy},
+    zvariant::ObjectPath,
+    CacheProperties, Connection, ConnectionBuilder, MatchRule, MessageHeader, MessageStream,
     SignalContext,
 };
 
@@ -69,9 +72,11 @@ async fn greet_service(socket_addr: &str) -> anyhow::Result<Connection> {
             &mut self,
             name: &str,
             #[zbus(signal_context)] ctxt: SignalContext<'_>,
+            #[zbus(header)] header: MessageHeader<'_>,
         ) -> fdo::Result<String> {
             self.count += 1;
-            Self::greeted(&ctxt, name, self.count).await?;
+            let path = header.path()?.unwrap().clone();
+            Self::greeted(&ctxt, name, self.count, path).await?;
             Ok(format!(
                 "Hello {}! I have been called {} times.",
                 name, self.count
@@ -79,7 +84,12 @@ async fn greet_service(socket_addr: &str) -> anyhow::Result<Connection> {
         }
 
         #[dbus_interface(signal)]
-        async fn greeted(ctxt: &SignalContext<'_>, name: &str, count: u64) -> zbus::Result<()>;
+        async fn greeted(
+            ctxt: &SignalContext<'_>,
+            name: &str,
+            count: u64,
+            path: ObjectPath<'_>,
+        ) -> zbus::Result<()>;
     }
 
     let greeter = Greeter { count: 0 };
@@ -101,7 +111,7 @@ async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
         fn say_hello(&self, name: &str) -> zbus::Result<String>;
 
         #[dbus_proxy(signal)]
-        async fn greeted(name: &str, count: u64);
+        async fn greeted(name: &str, count: u64, path: ObjectPath<'_>);
     }
 
     let conn = ConnectionBuilder::address(socket_addr)?.build().await?;
@@ -121,6 +131,7 @@ async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
     let args = signal.args()?;
     assert_eq!(args.name, "Maria");
     assert_eq!(args.count, 1);
+    assert_eq!(args.path, "/org/zbus/MyGreeter");
 
     // Now let's unsubcribe from the signal and ensure we don't receive it anymore.
     let msg_stream = MessageStream::from(&conn).filter_map(|msg| async {
@@ -133,6 +144,22 @@ async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
     timeout(Duration::from_millis(10), msg_stream.next())
         .await
         .unwrap_err();
+
+    // Now let's try a manual subscription.
+    let match_rule = MatchRule::builder()
+        .interface("org.zbus.MyGreeter1")?
+        .member("Greeted")?
+        .add_arg("Maria")?
+        .arg_path(2, "/org/zbus/MyGreeter")?
+        .build();
+    DBusProxy::new(&conn)
+        .await?
+        .add_match_rule(match_rule)
+        .await?;
+    let _ = proxy.say_hello("Maria").await?;
+    let signal = msg_stream.next().await.unwrap();
+    let args = signal.args()?;
+    assert_eq!(args.name, "Maria");
 
     Ok(())
 }
