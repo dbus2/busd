@@ -10,6 +10,7 @@ use zbus::{
     names::{
         BusName, InterfaceName, OwnedBusName, OwnedUniqueName, OwnedWellKnownName, UniqueName,
     },
+    zvariant::{ObjectPath, Structure},
     Connection, ConnectionBuilder, Guid, MatchRulePathSpec, MessageStream, OwnedMatchRule,
 };
 
@@ -153,7 +154,7 @@ impl Peer {
 
             // The arg0 namespace.
             if let Some(arg0_ns) = rule.arg0namespace() {
-                if let Ok(arg0) = msg.body::<InterfaceName<'_>>() {
+                if let Ok(arg0) = msg.body_unchecked::<InterfaceName<'_>>() {
                     if !arg0.starts_with(arg0_ns.as_str()) {
                         return false;
                     }
@@ -162,10 +163,35 @@ impl Peer {
                 }
             }
 
-            // TODO: Arg matches
-            //
-            // But how? We can't just deserialize specific args from the body w/o knowing the types
-            // of all args. We can support arg0 at least though (just like `arg0namespace` above).
+            // Args
+            let structure = match msg.body::<Structure<'_>>() {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let args = structure.fields();
+
+            for (i, arg) in rule.args() {
+                match args.get(*i as usize) {
+                    Some(msg_arg) => match <&str>::try_from(msg_arg) {
+                        Ok(msg_arg) if arg != msg_arg => return false,
+                        Ok(_) => (),
+                        Err(_) => return false,
+                    },
+                    None => return false,
+                }
+            }
+
+            // Path args
+            for (i, path) in rule.arg_paths() {
+                match args.get(*i as usize) {
+                    Some(msg_arg) => match <ObjectPath<'_>>::try_from(msg_arg) {
+                        Ok(msg_arg) if *path != msg_arg => return false,
+                        Ok(_) => (),
+                        Err(_) => return false,
+                    },
+                    None => return false,
+                }
+            }
 
             true
         })
