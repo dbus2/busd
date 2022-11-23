@@ -4,11 +4,7 @@ use anyhow::anyhow;
 use dbuz::bus::Bus;
 use futures_util::{pin_mut, stream::StreamExt};
 use ntest::timeout;
-use tokio::{
-    select,
-    sync::mpsc::{channel, Sender},
-    time::timeout,
-};
+use tokio::{select, sync::mpsc::channel, time::timeout};
 use tracing::instrument;
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 use zbus::{
@@ -37,16 +33,12 @@ async fn greet() {
     let path = dir.join(s);
 
     let mut bus = Bus::new(Some(&*path)).await.unwrap();
-    let (tx, mut rx) = channel(10);
+    let (tx, mut rx) = channel(1);
     let socket_addr = format!("unix:path={}", path.display());
-    let client_service_ready = async move {
-        rx.recv().await.unwrap();
-        rx.recv().await.unwrap();
-    };
 
     let handle = tokio::spawn(async move {
         select! {
-            _ = client_service_ready => (),
+            res = rx.recv() => res.unwrap(),
             _ = bus.run() => {
                 panic!("Bus stopped unexpectedly");
             }
@@ -55,22 +47,20 @@ async fn greet() {
         bus
     });
 
-    let ret = match greet_service(&socket_addr, tx.clone()).await {
-        Ok(service_conn) => greet_client(&socket_addr, tx.clone())
-            .await
-            .map(|_| service_conn),
+    let ret = match greet_service(&socket_addr).await {
+        Ok(service_conn) => greet_client(&socket_addr).await.map(|_| service_conn),
         Err(e) => Err(e),
     };
+    let _ = tx.send(()).await;
     let bus = handle.await.unwrap();
     bus.cleanup().await.unwrap();
     ret.unwrap();
 }
 
 #[instrument]
-async fn greet_service(socket_addr: &str, tx: Sender<()>) -> anyhow::Result<Connection> {
+async fn greet_service(socket_addr: &str) -> anyhow::Result<Connection> {
     struct Greeter {
         count: u64,
-        tx: Sender<()>,
     }
 
     #[dbus_interface(name = "org.zbus.MyGreeter1")]
@@ -82,7 +72,6 @@ async fn greet_service(socket_addr: &str, tx: Sender<()>) -> anyhow::Result<Conn
         ) -> fdo::Result<String> {
             self.count += 1;
             Self::greeted(&ctxt, name, self.count).await?;
-            self.tx.send(()).await.unwrap();
             Ok(format!(
                 "Hello {}! I have been called {} times.",
                 name, self.count
@@ -93,7 +82,7 @@ async fn greet_service(socket_addr: &str, tx: Sender<()>) -> anyhow::Result<Conn
         async fn greeted(ctxt: &SignalContext<'_>, name: &str, count: u64) -> zbus::Result<()>;
     }
 
-    let greeter = Greeter { count: 0, tx };
+    let greeter = Greeter { count: 0 };
     ConnectionBuilder::address(socket_addr)?
         .name("org.zbus.MyGreeter")?
         .serve_at("/org/zbus/MyGreeter", greeter)?
@@ -103,7 +92,7 @@ async fn greet_service(socket_addr: &str, tx: Sender<()>) -> anyhow::Result<Conn
 }
 
 #[instrument]
-async fn greet_client(socket_addr: &str, tx: Sender<()>) -> anyhow::Result<()> {
+async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
     #[dbus_proxy(
         interface = "org.zbus.MyGreeter1",
         default_path = "/org/zbus/MyGreeter"
@@ -144,8 +133,6 @@ async fn greet_client(socket_addr: &str, tx: Sender<()>) -> anyhow::Result<()> {
     timeout(Duration::from_millis(10), msg_stream.next())
         .await
         .unwrap_err();
-
-    let _ = tx.send(()).await;
 
     Ok(())
 }
