@@ -6,7 +6,6 @@ use futures_util::{pin_mut, stream::StreamExt};
 use ntest::timeout;
 use tokio::{select, sync::mpsc::channel, time::timeout};
 use tracing::instrument;
-use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 use zbus::{
     dbus_interface, dbus_proxy,
     fdo::{self, DBusProxy},
@@ -19,10 +18,7 @@ use zbus::{
 #[instrument]
 #[timeout(15000)]
 async fn greet() {
-    FmtSubscriber::builder()
-        .with_env_filter(EnvFilter::from_default_env())
-        .finish()
-        .init();
+    dbuz::tracing_subscriber::init();
 
     let dir = temp_dir().join("dbuz-test");
     let res = tokio::fs::create_dir(&dir).await;

@@ -7,7 +7,6 @@ use anyhow::Result;
 use clap::Parser;
 use tokio::{select, signal::unix::SignalKind};
 use tracing::{error, info, warn};
-use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
 /// A simple D-Bus broker.
 #[derive(Parser, Debug)]
@@ -20,10 +19,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    FmtSubscriber::builder()
-        .with_env_filter(EnvFilter::from_default_env())
-        .finish()
-        .init();
+    dbuz::tracing_subscriber::init();
 
     let args = Args::parse();
 

@@ -5,7 +5,6 @@ use dbuz::bus::Bus;
 use ntest::timeout;
 use tokio::{select, sync::oneshot::Sender};
 use tracing::instrument;
-use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 use zbus::{
     fdo::{DBusProxy, ReleaseNameReply, RequestNameFlags, RequestNameReply},
     names::WellKnownName,
@@ -16,10 +15,7 @@ use zbus::{
 #[instrument]
 #[timeout(15000)]
 async fn name_ownership_changes() {
-    FmtSubscriber::builder()
-        .with_env_filter(EnvFilter::from_default_env())
-        .finish()
-        .init();
+    dbuz::tracing_subscriber::init();
 
     let dir = temp_dir().join("dbuz-test");
     let res = tokio::fs::create_dir(&dir).await;
