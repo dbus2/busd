@@ -30,7 +30,7 @@ impl Peer {
         unix_stream: UnixStream,
         name_registry: NameRegistry,
     ) -> Result<Self> {
-        let unique_name = OwnedUniqueName::try_from(format!(":dbuz.{}", id)).unwrap();
+        let unique_name = OwnedUniqueName::try_from(format!(":dbuz.{id}")).unwrap();
 
         let conn = ConnectionBuilder::socket(unix_stream)
             .server(guid)
