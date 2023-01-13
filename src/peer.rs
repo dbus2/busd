@@ -40,9 +40,9 @@ impl Peer {
                 DBus::new(unique_name.clone(), name_registry),
             )?
             .name("org.freedesktop.DBus")?
+            .unique_name("org.freedesktop.DBus")?
             .build()
             .await?;
-        conn.set_unique_name("org.freedesktop.DBus")?;
         trace!("created: {:?}", conn);
 
         Ok(Self { conn, unique_name })
