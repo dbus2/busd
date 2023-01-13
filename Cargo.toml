@@ -7,7 +7,7 @@ edition = "2021"
 license = "MIT"
 readme = "README.md"
 rust-version = "1.60"
-repository = "https://gitlab.freedesktop.org/zeenix/dbuz/"
+repository = "https://github.com/zeenix/dbuz"
 keywords = ["D-Bus", "DBus", "IPC"]
 categories = ["network-programming"]
 
