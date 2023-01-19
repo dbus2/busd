@@ -29,7 +29,7 @@ async fn greet() {
 
     let handle = tokio::spawn(async move {
         select! {
-            res = rx.recv() => res.unwrap(),
+            _ = rx.recv() => (),
             _ = bus.run() => {
                 panic!("Bus stopped unexpectedly");
             }
