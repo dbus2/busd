@@ -26,7 +26,6 @@ jobs:
           RUST_BACKTRACE: "full"
         with:
           command: test
-          args: --no-fail-fast
       - uses: actions-rs/cargo@v1
         with:
           toolchain: nightly
