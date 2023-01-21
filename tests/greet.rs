@@ -20,16 +20,8 @@ use zbus::{
 async fn greet() {
     dbuz::tracing_subscriber::init();
 
-    let dir = temp_dir().join("dbuz-test");
-    let res = tokio::fs::create_dir(&dir).await;
-    if let Err(e) = &res {
-        // It's fine if it already exists.
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            res.unwrap();
-        }
-    }
     let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
-    let path = dir.join(s);
+    let path = temp_dir().join(s);
 
     let mut bus = Bus::new(Some(&*path)).await.unwrap();
     let (tx, mut rx) = channel(1);
@@ -37,7 +29,7 @@ async fn greet() {
 
     let handle = tokio::spawn(async move {
         select! {
-            res = rx.recv() => res.unwrap(),
+            _ = rx.recv() => (),
             _ = bus.run() => {
                 panic!("Bus stopped unexpectedly");
             }
