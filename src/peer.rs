@@ -7,11 +7,8 @@ use tracing::trace;
 use zbus::{
     dbus_interface,
     fdo::{self, ReleaseNameReply, RequestNameFlags, RequestNameReply},
-    names::{
-        BusName, InterfaceName, OwnedBusName, OwnedUniqueName, OwnedWellKnownName, UniqueName,
-    },
-    zvariant::{ObjectPath, Structure},
-    Connection, ConnectionBuilder, Guid, MatchRulePathSpec, MessageStream, OwnedMatchRule,
+    names::{BusName, OwnedBusName, OwnedUniqueName, OwnedWellKnownName},
+    Connection, ConnectionBuilder, Guid, MessageStream, OwnedMatchRule,
 };
 
 use crate::name_registry::NameRegistry;
@@ -74,19 +71,23 @@ impl Peer {
         let hdr = msg.header().expect("received message without header");
 
         dbus.match_rules.iter().any(|rule| {
-            // Start with message type.
-            if let Some(msg_type) = rule.msg_type() {
-                if msg_type != msg.message_type() {
+            // First make use of zbus API
+            match rule.matches(msg) {
+                Ok(false) => return false,
+                Ok(true) => (),
+                Err(e) => {
+                    tracing::warn!("error matching rule: {}", e);
+
                     return false;
                 }
             }
 
-            // Then check sender.
-            let sender = rule.sender().cloned().and_then(|name| match name {
+            // Then match sender and destination involving well-known names, manually.
+            if let Some(sender) = rule.sender().cloned().and_then(|name| match name {
                 BusName::WellKnown(name) => dbus.name_registry.lookup(name).as_deref().cloned(),
-                BusName::Unique(name) => Some(name),
-            });
-            if let Some(sender) = sender {
+                // Unique name is already taken care of by the zbus API.
+                BusName::Unique(_) => None,
+            }) {
                 if sender
                     != hdr
                         .sender()
@@ -98,98 +99,21 @@ impl Peer {
                 }
             }
 
-            // The interface.
-            if let Some(interface) = rule.interface() {
-                match msg.interface().as_ref() {
-                    Some(msg_interface) if interface != msg_interface => return false,
-                    Some(_) => (),
-                    None => return false,
-                }
-            }
-
-            // The member.
-            if let Some(member) = rule.member() {
-                match msg.member().as_ref() {
-                    Some(msg_member) if member != msg_member => return false,
-                    Some(_) => (),
-                    None => return false,
-                }
-            }
-
             // The destination.
             if let Some(destination) = rule.destination() {
-                let msg_destination: UniqueName = match hdr
+                match hdr
                     .destination()
                     .expect("DESTINATION field unset")
                     .expect("DESTINATION field unset")
                     .clone()
                 {
                     BusName::WellKnown(name) => match dbus.name_registry.lookup(name) {
-                        Some(name) => name.into(),
+                        Some(name) if name == *destination => (),
+                        Some(_) => return false,
                         None => return false,
                     },
-                    BusName::Unique(name) => name,
-                };
-                if destination != &msg_destination {
-                    return false;
-                }
-            }
-
-            // The path.
-            if let Some(path_spec) = rule.path_spec() {
-                let msg_path = match msg.path() {
-                    Some(p) => p,
-                    None => return false,
-                };
-                match path_spec {
-                    MatchRulePathSpec::Path(path) if path != &msg_path => return false,
-                    MatchRulePathSpec::PathNamespace(path_ns)
-                        if !msg_path.starts_with(path_ns.as_str()) =>
-                    {
-                        return false;
-                    }
-                    MatchRulePathSpec::Path(_) | MatchRulePathSpec::PathNamespace(_) => (),
-                }
-            }
-
-            // The arg0 namespace.
-            if let Some(arg0_ns) = rule.arg0namespace() {
-                if let Ok(arg0) = msg.body_unchecked::<InterfaceName<'_>>() {
-                    if !arg0.starts_with(arg0_ns.as_str()) {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
-            }
-
-            // Args
-            let structure = match msg.body::<Structure<'_>>() {
-                Ok(s) => s,
-                Err(_) => return false,
-            };
-            let args = structure.fields();
-
-            for (i, arg) in rule.args() {
-                match args.get(*i as usize) {
-                    Some(msg_arg) => match <&str>::try_from(msg_arg) {
-                        Ok(msg_arg) if arg != msg_arg => return false,
-                        Ok(_) => (),
-                        Err(_) => return false,
-                    },
-                    None => return false,
-                }
-            }
-
-            // Path args
-            for (i, path) in rule.arg_paths() {
-                match args.get(*i as usize) {
-                    Some(msg_arg) => match <ObjectPath<'_>>::try_from(msg_arg) {
-                        Ok(msg_arg) if *path != msg_arg => return false,
-                        Ok(_) => (),
-                        Err(_) => return false,
-                    },
-                    None => return false,
+                    // Unique name is already taken care of by the zbus API.
+                    BusName::Unique(_) => {}
                 }
             }
 
