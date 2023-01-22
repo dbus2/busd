@@ -53,16 +53,6 @@ impl Bus {
         }
     }
 
-    pub async fn unix_stream(socket_path: &Path) -> Result<Self> {
-        let socket_path = socket_path.to_path_buf();
-        let listener = Listener::Unix {
-            listener: tokio::net::UnixListener::bind(&socket_path)?,
-            socket_path,
-        };
-
-        Ok(Self::new(listener))
-    }
-
     pub async fn run(&mut self) {
         while let Ok(socket) = self.accept().await {
             match Peer::new(&self.guid, self.next_id, socket, self.name_registry.clone()).await {
@@ -92,6 +82,16 @@ impl Bus {
             next_id: 0,
             name_registry,
         }
+    }
+
+    async fn unix_stream(socket_path: &Path) -> Result<Self> {
+        let socket_path = socket_path.to_path_buf();
+        let listener = Listener::Unix {
+            listener: tokio::net::UnixListener::bind(&socket_path)?,
+            socket_path,
+        };
+
+        Ok(Self::new(listener))
     }
 
     async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
