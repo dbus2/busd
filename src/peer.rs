@@ -2,13 +2,12 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 use enumflags2::BitFlags;
-use tokio::net::UnixStream;
 use tracing::trace;
 use zbus::{
     dbus_interface,
     fdo::{self, ReleaseNameReply, RequestNameFlags, RequestNameReply},
     names::{BusName, OwnedBusName, OwnedUniqueName, OwnedWellKnownName},
-    Connection, ConnectionBuilder, Guid, MessageStream, OwnedMatchRule,
+    Connection, ConnectionBuilder, Guid, MessageStream, OwnedMatchRule, Socket,
 };
 
 use crate::name_registry::NameRegistry;
@@ -24,12 +23,12 @@ impl Peer {
     pub async fn new(
         guid: &Guid,
         id: usize,
-        unix_stream: UnixStream,
+        socket: Box<dyn Socket + 'static>,
         name_registry: NameRegistry,
     ) -> Result<Self> {
         let unique_name = OwnedUniqueName::try_from(format!(":dbuz.{id}")).unwrap();
 
-        let conn = ConnectionBuilder::socket(unix_stream)
+        let conn = ConnectionBuilder::socket(socket)
             .server(guid)
             .p2p()
             .serve_at(

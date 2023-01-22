@@ -20,7 +20,7 @@ async fn name_ownership_changes() {
     let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
     let path = temp_dir().join(s);
 
-    let mut bus = Bus::new(Some(&*path)).await.unwrap();
+    let mut bus = Bus::unix_stream(Some(&*path)).await.unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     let handle = tokio::spawn(async move {

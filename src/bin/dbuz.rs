@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let mut bus = bus::Bus::new(args.socket_path.as_deref()).await?;
+    let mut bus = bus::Bus::unix_stream(args.socket_path.as_deref()).await?;
 
     let mut sig_int = tokio::signal::unix::signal(SignalKind::interrupt())?;
 

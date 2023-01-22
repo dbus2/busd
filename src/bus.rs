@@ -6,7 +6,7 @@ use std::{
 };
 use tokio::fs::remove_file;
 use tracing::{debug, warn};
-use zbus::Guid;
+use zbus::{Guid, Socket};
 
 use crate::{name_registry::NameRegistry, peer::Peer, peers::Peers};
 
@@ -14,15 +14,22 @@ use crate::{name_registry::NameRegistry, peer::Peer, peers::Peers};
 #[derive(Debug)]
 pub struct Bus {
     peers: Peers,
-    listener: tokio::net::UnixListener,
+    listener: Listener,
     guid: Guid,
-    socket_path: PathBuf,
     next_id: usize,
     name_registry: NameRegistry,
 }
 
+#[derive(Debug)]
+enum Listener {
+    Unix {
+        listener: tokio::net::UnixListener,
+        socket_path: PathBuf,
+    },
+}
+
 impl Bus {
-    pub async fn new(socket_path: Option<&Path>) -> Result<Self> {
+    pub async fn unix_stream(socket_path: Option<&Path>) -> Result<Self> {
         let socket_path = socket_path
             .map(Path::to_path_buf)
             .or_else(|| {
@@ -36,29 +43,17 @@ impl Bus {
                     .join(format!("{}", Uid::current()))
                     .join("dbuz-session")
             });
-        let name_registry = NameRegistry::default();
-
-        Ok(Self {
+        let listener = Listener::Unix {
             listener: tokio::net::UnixListener::bind(&socket_path)?,
-            peers: Peers::new(name_registry.clone()),
-            guid: Guid::generate(),
             socket_path,
-            next_id: 0,
-            name_registry,
-        })
+        };
+
+        Ok(Self::new(listener))
     }
 
     pub async fn run(&mut self) {
-        while let Ok((unix_stream, addr)) = self.listener.accept().await {
-            debug!("Accepted connection from {:?}", addr);
-            match Peer::new(
-                &self.guid,
-                self.next_id,
-                unix_stream,
-                self.name_registry.clone(),
-            )
-            .await
-            {
+        while let Ok(socket) = self.accept().await {
+            match Peer::new(&self.guid, self.next_id, socket, self.name_registry.clone()).await {
                 Ok(peer) => self.peers.add(peer).await,
                 Err(e) => warn!("Failed to establish connection: {}", e),
             }
@@ -68,6 +63,36 @@ impl Bus {
 
     // AsyncDrop would have been nice!
     pub async fn cleanup(self) -> Result<()> {
-        remove_file(&self.socket_path).await.map_err(Into::into)
+        match self.listener {
+            Listener::Unix { socket_path, .. } => {
+                remove_file(socket_path).await.map_err(Into::into)
+            }
+        }
+    }
+
+    fn new(listener: Listener) -> Self {
+        let name_registry = NameRegistry::default();
+
+        Self {
+            listener,
+            peers: Peers::new(name_registry.clone()),
+            guid: Guid::generate(),
+            next_id: 0,
+            name_registry,
+        }
+    }
+
+    async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
+        match &mut self.listener {
+            Listener::Unix {
+                listener,
+                socket_path: _,
+            } => {
+                let (unix_stream, addr) = listener.accept().await?;
+                debug!("Accepted connection from {:?}", addr);
+
+                Ok(Box::new(unix_stream))
+            }
+        }
     }
 }

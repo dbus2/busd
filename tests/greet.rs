@@ -23,7 +23,7 @@ async fn greet() {
     let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
     let path = temp_dir().join(s);
 
-    let mut bus = Bus::new(Some(&*path)).await.unwrap();
+    let mut bus = Bus::unix_stream(Some(&*path)).await.unwrap();
     let (tx, mut rx) = channel(1);
     let socket_addr = format!("unix:path={}", path.display());
 
