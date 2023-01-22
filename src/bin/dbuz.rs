@@ -1,7 +1,6 @@
 extern crate dbuz;
-use dbuz::bus;
 
-use std::path::PathBuf;
+use dbuz::bus;
 
 use anyhow::Result;
 use clap::Parser;
@@ -12,9 +11,9 @@ use tracing::{error, info, warn};
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    /// The socket path.
-    #[clap(short = 's', long, value_parser)]
-    socket_path: Option<PathBuf>,
+    /// The address to listen on.
+    #[clap(short = 'a', long, value_parser)]
+    address: Option<String>,
 }
 
 #[tokio::main]
@@ -23,7 +22,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let mut bus = bus::Bus::unix_stream(args.socket_path.as_deref()).await?;
+    let mut bus = bus::Bus::for_address(args.address.as_deref()).await?;
 
     let mut sig_int = tokio::signal::unix::signal(SignalKind::interrupt())?;
 

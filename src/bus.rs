@@ -1,12 +1,13 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use nix::unistd::Uid;
 use std::{
     env,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 use tokio::fs::remove_file;
-use tracing::{debug, warn};
-use zbus::{Guid, Socket};
+use tracing::{debug, info, warn};
+use zbus::{Address, Guid, Socket};
 
 use crate::{name_registry::NameRegistry, peer::Peer, peers::Peers};
 
@@ -29,20 +30,31 @@ enum Listener {
 }
 
 impl Bus {
-    pub async fn unix_stream(socket_path: Option<&Path>) -> Result<Self> {
-        let socket_path = socket_path
-            .map(Path::to_path_buf)
-            .or_else(|| {
-                env::var("XDG_RUNTIME_DIR")
-                    .ok()
-                    .map(|p| Path::new(&p).to_path_buf().join("dbuz-session"))
-            })
-            .unwrap_or_else(|| {
-                Path::new("/run")
-                    .join("user")
-                    .join(format!("{}", Uid::current()))
-                    .join("dbuz-session")
-            });
+    pub async fn for_address(address: Option<&str>) -> Result<Self> {
+        let address = match address {
+            Some(address) => address.to_string(),
+            None => default_address(),
+        };
+        match Address::from_str(&address)? {
+            Address::Unix(path) => {
+                let path = Path::new(&path);
+                info!("Listening on {}.", path.display());
+
+                Self::unix_stream(path).await
+            }
+            Address::Tcp(_) => Err(anyhow!("`tcp` transport is not supported (yet)."))?,
+            Address::NonceTcp { .. } => {
+                Err(anyhow!("`nonce-tcp` transport is not supported (yet)."))?
+            }
+            Address::Autolaunch(_) => {
+                Err(anyhow!("`autolaunch` transport is not supported (yet)."))?
+            }
+            _ => Err(anyhow!("Unsupported address `{}`.", address))?,
+        }
+    }
+
+    pub async fn unix_stream(socket_path: &Path) -> Result<Self> {
+        let socket_path = socket_path.to_path_buf();
         let listener = Listener::Unix {
             listener: tokio::net::UnixListener::bind(&socket_path)?,
             socket_path,
@@ -95,4 +107,19 @@ impl Bus {
             }
         }
     }
+}
+
+fn default_address() -> String {
+    let runtime_dir = env::var("XDG_RUNTIME_DIR")
+        .as_ref()
+        .map(|s| Path::new(s).to_path_buf())
+        .ok()
+        .unwrap_or_else(|| {
+            Path::new("/run")
+                .join("user")
+                .join(format!("{}", Uid::current()))
+        });
+    let path = runtime_dir.join("dbuz-session");
+
+    format!("unix:path={}", path.display())
 }
