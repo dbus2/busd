@@ -7,7 +7,7 @@ use std::{
 };
 use tokio::fs::remove_file;
 use tracing::{debug, info, warn};
-use zbus::{Address, Guid, Socket};
+use zbus::{Address, Guid, Socket, TcpAddress};
 
 use crate::{name_registry::NameRegistry, peer::Peer, peers::Peers};
 
@@ -27,6 +27,9 @@ enum Listener {
         listener: tokio::net::UnixListener,
         socket_path: PathBuf,
     },
+    Tcp {
+        listener: tokio::net::TcpListener,
+    },
 }
 
 impl Bus {
@@ -42,7 +45,11 @@ impl Bus {
 
                 Self::unix_stream(path).await
             }
-            Address::Tcp(_) => Err(anyhow!("`tcp` transport is not supported (yet)."))?,
+            Address::Tcp(address) => {
+                info!("Listening on `{}:{}`.", address.host(), address.port());
+
+                Self::tcp_stream(&address).await
+            }
             Address::NonceTcp { .. } => {
                 Err(anyhow!("`nonce-tcp` transport is not supported (yet)."))?
             }
@@ -69,6 +76,7 @@ impl Bus {
             Listener::Unix { socket_path, .. } => {
                 remove_file(socket_path).await.map_err(Into::into)
             }
+            Listener::Tcp { .. } => Ok(()),
         }
     }
 
@@ -94,6 +102,15 @@ impl Bus {
         Ok(Self::new(listener))
     }
 
+    async fn tcp_stream(address: &TcpAddress) -> Result<Self> {
+        let address = (address.host(), address.port());
+        let listener = Listener::Tcp {
+            listener: tokio::net::TcpListener::bind(address).await?,
+        };
+
+        Ok(Self::new(listener))
+    }
+
     async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
         match &mut self.listener {
             Listener::Unix {
@@ -104,6 +121,12 @@ impl Bus {
                 debug!("Accepted connection from {:?}", addr);
 
                 Ok(Box::new(unix_stream))
+            }
+            Listener::Tcp { listener } => {
+                let (tcp_stream, addr) = listener.accept().await?;
+                debug!("Accepted connection from {:?}", addr);
+
+                Ok(Box::new(tcp_stream))
             }
         }
     }
