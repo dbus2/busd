@@ -19,6 +19,7 @@ pub struct Bus {
     guid: Guid,
     next_id: usize,
     name_registry: NameRegistry,
+    allow_anonymous: bool,
 }
 
 #[derive(Debug)]
@@ -33,7 +34,7 @@ enum Listener {
 }
 
 impl Bus {
-    pub async fn for_address(address: Option<&str>) -> Result<Self> {
+    pub async fn for_address(address: Option<&str>, allow_anonymous: bool) -> Result<Self> {
         let address = match address {
             Some(address) => address.to_string(),
             None => default_address(),
@@ -43,12 +44,12 @@ impl Bus {
                 let path = Path::new(&path);
                 info!("Listening on {}.", path.display());
 
-                Self::unix_stream(path).await
+                Self::unix_stream(path, allow_anonymous).await
             }
             Address::Tcp(address) => {
                 info!("Listening on `{}:{}`.", address.host(), address.port());
 
-                Self::tcp_stream(&address).await
+                Self::tcp_stream(&address, allow_anonymous).await
             }
             Address::NonceTcp { .. } => {
                 Err(anyhow!("`nonce-tcp` transport is not supported (yet)."))?
@@ -62,7 +63,15 @@ impl Bus {
 
     pub async fn run(&mut self) {
         while let Ok(socket) = self.accept().await {
-            match Peer::new(&self.guid, self.next_id, socket, self.name_registry.clone()).await {
+            match Peer::new(
+                &self.guid,
+                self.next_id,
+                socket,
+                self.name_registry.clone(),
+                self.allow_anonymous,
+            )
+            .await
+            {
                 Ok(peer) => self.peers.add(peer).await,
                 Err(e) => warn!("Failed to establish connection: {}", e),
             }
@@ -80,7 +89,7 @@ impl Bus {
         }
     }
 
-    fn new(listener: Listener) -> Self {
+    fn new(listener: Listener, allow_anonymous: bool) -> Self {
         let name_registry = NameRegistry::default();
 
         Self {
@@ -89,26 +98,27 @@ impl Bus {
             guid: Guid::generate(),
             next_id: 0,
             name_registry,
+            allow_anonymous,
         }
     }
 
-    async fn unix_stream(socket_path: &Path) -> Result<Self> {
+    async fn unix_stream(socket_path: &Path, allow_anonymous: bool) -> Result<Self> {
         let socket_path = socket_path.to_path_buf();
         let listener = Listener::Unix {
             listener: tokio::net::UnixListener::bind(&socket_path)?,
             socket_path,
         };
 
-        Ok(Self::new(listener))
+        Ok(Self::new(listener, allow_anonymous))
     }
 
-    async fn tcp_stream(address: &TcpAddress) -> Result<Self> {
+    async fn tcp_stream(address: &TcpAddress, allow_anonymous: bool) -> Result<Self> {
         let address = (address.host(), address.port());
         let listener = Listener::Tcp {
             listener: tokio::net::TcpListener::bind(address).await?,
         };
 
-        Ok(Self::new(listener))
+        Ok(Self::new(listener, allow_anonymous))
     }
 
     async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {

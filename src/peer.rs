@@ -7,7 +7,7 @@ use zbus::{
     dbus_interface,
     fdo::{self, ReleaseNameReply, RequestNameFlags, RequestNameReply},
     names::{BusName, OwnedBusName, OwnedUniqueName, OwnedWellKnownName},
-    Connection, ConnectionBuilder, Guid, MessageStream, OwnedMatchRule, Socket,
+    AuthMechanism, Connection, ConnectionBuilder, Guid, MessageStream, OwnedMatchRule, Socket,
 };
 
 use crate::name_registry::NameRegistry;
@@ -25,9 +25,14 @@ impl Peer {
         id: usize,
         socket: Box<dyn Socket + 'static>,
         name_registry: NameRegistry,
+        allow_anonymous: bool,
     ) -> Result<Self> {
         let unique_name = OwnedUniqueName::try_from(format!(":dbuz.{id}")).unwrap();
 
+        let mut auth_mechanisms = vec![AuthMechanism::External];
+        if allow_anonymous {
+            auth_mechanisms.push(AuthMechanism::Anonymous);
+        }
         let conn = ConnectionBuilder::socket(socket)
             .server(guid)
             .p2p()
@@ -37,6 +42,7 @@ impl Peer {
             )?
             .name("org.freedesktop.DBus")?
             .unique_name("org.freedesktop.DBus")?
+            .auth_mechanisms(&auth_mechanisms)
             .build()
             .await?;
         trace!("created: {:?}", conn);

@@ -14,6 +14,10 @@ struct Args {
     /// The address to listen on.
     #[clap(short = 'a', long, value_parser)]
     address: Option<String>,
+
+    /// Allow anonymous connections.
+    #[clap(long)]
+    allow_anonymous: bool,
 }
 
 #[tokio::main]
@@ -22,7 +26,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let mut bus = bus::Bus::for_address(args.address.as_deref()).await?;
+    let mut bus = bus::Bus::for_address(args.address.as_deref(), args.allow_anonymous).await?;
 
     let mut sig_int = tokio::signal::unix::signal(SignalKind::interrupt())?;
 

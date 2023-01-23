@@ -21,7 +21,7 @@ async fn name_ownership_changes() {
     let path = temp_dir().join(s);
     let address = format!("unix:path={}", path.display());
 
-    let mut bus = Bus::for_address(Some(&address)).await.unwrap();
+    let mut bus = Bus::for_address(Some(&address), false).await.unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     let handle = tokio::spawn(async move {
