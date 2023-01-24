@@ -20,13 +20,22 @@ use zbus::{
 async fn greet() {
     dbuz::tracing_subscriber::init();
 
+    // Unix socket
     let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
     let path = temp_dir().join(s);
     let address = format!("unix:path={}", path.display());
+    greet_(&address, false).await;
 
-    let mut bus = Bus::for_address(Some(&address), false).await.unwrap();
+    // TCP socket
+    let address = format!("tcp:host=127.0.0.1,port=4248");
+    greet_(&address, true).await;
+}
+
+async fn greet_(socket_addr: &str, allow_anonymous: bool) {
+    let mut bus = Bus::for_address(Some(socket_addr), allow_anonymous)
+        .await
+        .unwrap();
     let (tx, mut rx) = channel(1);
-    let socket_addr = format!("unix:path={}", path.display());
 
     let handle = tokio::spawn(async move {
         select! {

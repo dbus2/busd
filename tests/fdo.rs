@@ -1,4 +1,4 @@
-use std::{env::temp_dir, iter::repeat_with, path::Path};
+use std::{env::temp_dir, iter::repeat_with};
 
 use anyhow::ensure;
 use dbuz::bus::Bus;
@@ -17,11 +17,21 @@ use zbus::{
 async fn name_ownership_changes() {
     dbuz::tracing_subscriber::init();
 
+    // Unix socket
     let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
     let path = temp_dir().join(s);
     let address = format!("unix:path={}", path.display());
+    name_ownership_changes_(&address, false).await;
 
-    let mut bus = Bus::for_address(Some(&address), false).await.unwrap();
+    // TCP socket
+    let address = format!("tcp:host=127.0.0.1,port=4242");
+    name_ownership_changes_(&address, true).await;
+}
+
+async fn name_ownership_changes_(address: &str, allow_anonymous: bool) {
+    let mut bus = Bus::for_address(Some(address), allow_anonymous)
+        .await
+        .unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     let handle = tokio::spawn(async move {
@@ -35,16 +45,15 @@ async fn name_ownership_changes() {
         bus
     });
 
-    let ret = name_ownership_changes_client(&path, tx).await;
+    let ret = name_ownership_changes_client(address, tx).await;
     let bus = handle.await.unwrap();
     bus.cleanup().await.unwrap();
     ret.unwrap();
 }
 
 #[instrument]
-async fn name_ownership_changes_client(path: &Path, tx: Sender<()>) -> anyhow::Result<()> {
-    let socket_addr = format!("unix:path={}", path.display());
-    let conn = ConnectionBuilder::address(&*socket_addr)?.build().await?;
+async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow::Result<()> {
+    let conn = ConnectionBuilder::address(address)?.build().await?;
     let dbus_proxy = DBusProxy::builder(&conn)
         .cache_properties(CacheProperties::No)
         .build()
@@ -70,7 +79,7 @@ async fn name_ownership_changes_client(path: &Path, tx: Sender<()>) -> anyhow::R
     );
 
     // Now we try with another connection and we should be queued.
-    let conn2 = ConnectionBuilder::address(&*socket_addr)?.build().await?;
+    let conn2 = ConnectionBuilder::address(address)?.build().await?;
     let dbus_proxy2 = DBusProxy::builder(&conn2)
         .cache_properties(CacheProperties::No)
         .build()
