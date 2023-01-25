@@ -4,6 +4,7 @@ use dbuz::bus;
 
 use anyhow::Result;
 use clap::Parser;
+#[cfg(unix)]
 use tokio::{select, signal::unix::SignalKind};
 use tracing::{error, info, warn};
 
@@ -28,16 +29,22 @@ async fn main() -> Result<()> {
 
     let mut bus = bus::Bus::for_address(args.address.as_deref(), args.allow_anonymous).await?;
 
-    let mut sig_int = tokio::signal::unix::signal(SignalKind::interrupt())?;
+    // FIXME: How to handle this gracefully on Windows?
+    #[cfg(unix)]
+    {
+        let mut sig_int = tokio::signal::unix::signal(SignalKind::interrupt())?;
 
-    select! {
-        _ = sig_int.recv() => {
-            info!("Received SIGINT, shutting down..");
-        }
-        _ = bus.run() => {
-            warn!("Bus stopped, shutting down..");
+        select! {
+            _ = sig_int.recv() => {
+                info!("Received SIGINT, shutting down..");
+            }
+            _ = bus.run() => {
+                warn!("Bus stopped, shutting down..");
+            }
         }
     }
+    #[cfg(not(unix))]
+    bus.run().await;
 
     if let Err(e) = bus.cleanup().await {
         error!("Failed to clean up: {}", e);

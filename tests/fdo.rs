@@ -18,10 +18,13 @@ async fn name_ownership_changes() {
     dbuz::tracing_subscriber::init();
 
     // Unix socket
-    let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
-    let path = temp_dir().join(s);
-    let address = format!("unix:path={}", path.display());
-    name_ownership_changes_(&address, false).await;
+    #[cfg(unix)]
+    {
+        let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
+        let path = temp_dir().join(s);
+        let address = format!("unix:path={}", path.display());
+        name_ownership_changes_(&address, false).await;
+    }
 
     // TCP socket
     let address = format!("tcp:host=127.0.0.1,port=4242");

@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Result};
-use nix::unistd::Uid;
+use std::str::FromStr;
+#[cfg(unix)]
 use std::{
     env,
     path::{Path, PathBuf},
-    str::FromStr,
 };
+#[cfg(unix)]
 use tokio::fs::remove_file;
 use tracing::{debug, info, warn};
 use zbus::{Address, Guid, Socket, TcpAddress};
@@ -24,6 +25,7 @@ pub struct Bus {
 
 #[derive(Debug)]
 enum Listener {
+    #[cfg(unix)]
     Unix {
         listener: tokio::net::UnixListener,
         socket_path: PathBuf,
@@ -40,11 +42,16 @@ impl Bus {
             None => default_address(),
         };
         match Address::from_str(&address)? {
+            #[cfg(unix)]
             Address::Unix(path) => {
                 let path = Path::new(&path);
                 info!("Listening on {}.", path.display());
 
                 Self::unix_stream(path, allow_anonymous).await
+            }
+            #[cfg(not(unix))]
+            Address::Unix(path) => {
+                Err(anyhow!("`unix` transport on non-UNIX OS is not supported."))?
             }
             Address::Tcp(address) => {
                 info!("Listening on `{}:{}`.", address.host(), address.port());
@@ -82,6 +89,7 @@ impl Bus {
     // AsyncDrop would have been nice!
     pub async fn cleanup(self) -> Result<()> {
         match self.listener {
+            #[cfg(unix)]
             Listener::Unix { socket_path, .. } => {
                 remove_file(socket_path).await.map_err(Into::into)
             }
@@ -102,6 +110,7 @@ impl Bus {
         }
     }
 
+    #[cfg(unix)]
     async fn unix_stream(socket_path: &Path, allow_anonymous: bool) -> Result<Self> {
         let socket_path = socket_path.to_path_buf();
         let listener = Listener::Unix {
@@ -123,6 +132,7 @@ impl Bus {
 
     async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
         match &mut self.listener {
+            #[cfg(unix)]
             Listener::Unix {
                 listener,
                 socket_path: _,
@@ -142,6 +152,7 @@ impl Bus {
     }
 }
 
+#[cfg(unix)]
 fn default_address() -> String {
     let runtime_dir = env::var("XDG_RUNTIME_DIR")
         .as_ref()
@@ -150,9 +161,14 @@ fn default_address() -> String {
         .unwrap_or_else(|| {
             Path::new("/run")
                 .join("user")
-                .join(format!("{}", Uid::current()))
+                .join(format!("{}", nix::unistd::Uid::current()))
         });
     let path = runtime_dir.join("dbuz-session");
 
     format!("unix:path={}", path.display())
+}
+
+#[cfg(not(unix))]
+fn default_address() -> String {
+    "tcp:host=127.0.0.1,port=4242".to_string()
 }
