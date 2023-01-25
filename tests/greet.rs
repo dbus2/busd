@@ -4,7 +4,11 @@ use anyhow::anyhow;
 use dbuz::bus::Bus;
 use futures_util::{pin_mut, stream::StreamExt};
 use ntest::timeout;
-use tokio::{select, sync::mpsc::channel, time::timeout};
+use tokio::{
+    select,
+    sync::mpsc::channel,
+    time::{sleep, timeout},
+};
 use tracing::instrument;
 use zbus::{
     dbus_interface, dbus_proxy,
@@ -20,12 +24,25 @@ use zbus::{
 async fn greet() {
     dbuz::tracing_subscriber::init();
 
-    let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
-    let path = temp_dir().join(s);
+    // Unix socket
+    #[cfg(unix)]
+    {
+        let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
+        let path = temp_dir().join(s);
+        let address = format!("unix:path={}", path.display());
+        greet_(&address, false).await;
+    }
 
-    let mut bus = Bus::new(Some(&*path)).await.unwrap();
+    // TCP socket
+    let address = format!("tcp:host=127.0.0.1,port=4248");
+    greet_(&address, true).await;
+}
+
+async fn greet_(socket_addr: &str, allow_anonymous: bool) {
+    let mut bus = Bus::for_address(Some(socket_addr), allow_anonymous)
+        .await
+        .unwrap();
     let (tx, mut rx) = channel(1);
-    let socket_addr = format!("unix:path={}", path.display());
 
     let handle = tokio::spawn(async move {
         select! {
@@ -122,12 +139,14 @@ async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
     assert_eq!(args.path, "/org/zbus/MyGreeter");
 
     // Now let's unsubcribe from the signal and ensure we don't receive it anymore.
+    drop(greeted_stream);
+    // FIXME: A workaround for https://gitlab.freedesktop.org/dbus/zbus/-/issues/306
+    sleep(Duration::from_millis(10)).await;
     let msg_stream = MessageStream::from(&conn).filter_map(|msg| async {
         let msg = msg.ok()?;
         Greeted::from_message(msg)
     });
     pin_mut!(msg_stream);
-    drop(greeted_stream);
     let _ = proxy.say_hello("Maria").await?;
     timeout(Duration::from_millis(10), msg_stream.next())
         .await
