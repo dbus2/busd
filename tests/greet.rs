@@ -4,7 +4,11 @@ use anyhow::anyhow;
 use dbuz::bus::Bus;
 use futures_util::{pin_mut, stream::StreamExt};
 use ntest::timeout;
-use tokio::{select, sync::mpsc::channel, time::timeout};
+use tokio::{
+    select,
+    sync::mpsc::channel,
+    time::{sleep, timeout},
+};
 use tracing::instrument;
 use zbus::{
     dbus_interface, dbus_proxy,
@@ -132,12 +136,14 @@ async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
     assert_eq!(args.path, "/org/zbus/MyGreeter");
 
     // Now let's unsubcribe from the signal and ensure we don't receive it anymore.
+    drop(greeted_stream);
+    // FIXME: A workaround for https://gitlab.freedesktop.org/dbus/zbus/-/issues/306
+    sleep(Duration::from_millis(10)).await;
     let msg_stream = MessageStream::from(&conn).filter_map(|msg| async {
         let msg = msg.ok()?;
         Greeted::from_message(msg)
     });
     pin_mut!(msg_stream);
-    drop(greeted_stream);
     let _ = proxy.say_hello("Maria").await?;
     timeout(Duration::from_millis(10), msg_stream.next())
         .await
