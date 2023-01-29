@@ -4,18 +4,14 @@ use anyhow::anyhow;
 use dbuz::bus::Bus;
 use futures_util::{pin_mut, stream::StreamExt};
 use ntest::timeout;
-use tokio::{
-    select,
-    sync::mpsc::channel,
-    time::{sleep, timeout},
-};
+use tokio::{select, sync::mpsc::channel, time::timeout};
 use tracing::instrument;
 use zbus::{
     dbus_interface, dbus_proxy,
     fdo::{self, DBusProxy},
     zvariant::ObjectPath,
-    CacheProperties, Connection, ConnectionBuilder, MatchRule, MessageHeader, MessageStream,
-    SignalContext,
+    AsyncDrop, CacheProperties, Connection, ConnectionBuilder, MatchRule, MessageHeader,
+    MessageStream, SignalContext,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -139,9 +135,7 @@ async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
     assert_eq!(args.path, "/org/zbus/MyGreeter");
 
     // Now let's unsubcribe from the signal and ensure we don't receive it anymore.
-    drop(greeted_stream);
-    // FIXME: A workaround for https://gitlab.freedesktop.org/dbus/zbus/-/issues/306
-    sleep(Duration::from_millis(10)).await;
+    greeted_stream.async_drop().await;
     let msg_stream = MessageStream::from(&conn).filter_map(|msg| async {
         let msg = msg.ok()?;
         Greeted::from_message(msg)
