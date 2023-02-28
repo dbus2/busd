@@ -308,7 +308,7 @@ dependencies = [
  "enumflags2",
  "fastrand",
  "futures-util",
- "nix",
+ "nix 0.25.0",
  "ntest",
  "parking_lot",
  "serde",
@@ -749,6 +749,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "memoffset"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5de893c32cde5f383baa4c04c5d6dbdd735cfd4a794b0debdb2bb1b421da5ff4"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -791,8 +800,22 @@ dependencies = [
  "bitflags",
  "cfg-if",
  "libc",
- "memoffset",
+ "memoffset 0.6.5",
  "pin-utils",
+]
+
+[[package]]
+name = "nix"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfdda3d196821d6af13126e40375cdf7da646a96114af134d5f417a9a1dc8e1a"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "libc",
+ "memoffset 0.7.1",
+ "pin-utils",
+ "static_assertions",
 ]
 
 [[package]]
@@ -865,9 +888,9 @@ checksum = "18a6dbe30758c9f83eb00cbea4ac95966305f5a7772f3f42ebfc7fc7eddbd8e1"
 
 [[package]]
 name = "ordered-stream"
-version = "0.1.4"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "360a24bdacdb7801a1a6af8500392864791c130ebe8bd9a063158cab00040c90"
+checksum = "9aa2b01e1d916879f73a53d01d1d6cee68adbb31d6d9177a8cfce093cced1d50"
 dependencies = [
  "futures-core",
  "pin-project-lite",
@@ -1655,8 +1678,8 @@ checksum = "c811ca4a8c853ef420abd8592ba53ddbbac90410fab6903b3e79972a631f7680"
 
 [[package]]
 name = "zbus"
-version = "3.7.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#3548e84b6cafde05a6d98039c678b3552d75a0ed"
+version = "3.10.0"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
 dependencies = [
  "async-broadcast",
  "async-recursion",
@@ -1671,7 +1694,7 @@ dependencies = [
  "futures-util",
  "hex",
  "lazy_static",
- "nix",
+ "nix 0.26.2",
  "once_cell",
  "ordered-stream",
  "rand",
@@ -1690,20 +1713,21 @@ dependencies = [
 
 [[package]]
 name = "zbus_macros"
-version = "3.7.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#3548e84b6cafde05a6d98039c678b3552d75a0ed"
+version = "3.10.0"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
  "regex",
  "syn",
+ "zvariant_utils",
 ]
 
 [[package]]
 name = "zbus_names"
 version = "2.5.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#3548e84b6cafde05a6d98039c678b3552d75a0ed"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
 dependencies = [
  "serde",
  "static_assertions",
@@ -1712,8 +1736,8 @@ dependencies = [
 
 [[package]]
 name = "zvariant"
-version = "3.10.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#3548e84b6cafde05a6d98039c678b3552d75a0ed"
+version = "3.11.0"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
 dependencies = [
  "byteorder",
  "enumflags2",
@@ -1725,10 +1749,21 @@ dependencies = [
 
 [[package]]
 name = "zvariant_derive"
-version = "3.10.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#3548e84b6cafde05a6d98039c678b3552d75a0ed"
+version = "3.11.0"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
 dependencies = [
  "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "zvariant_utils",
+]
+
+[[package]]
+name = "zvariant_utils"
+version = "0.1.0"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
+dependencies = [
  "proc-macro2",
  "quote",
  "syn",
