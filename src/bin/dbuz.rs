@@ -3,7 +3,7 @@ extern crate dbuz;
 use dbuz::bus;
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 #[cfg(unix)]
 use tokio::{select, signal::unix::SignalKind};
 use tracing::{error, info, warn};
@@ -16,9 +16,29 @@ struct Args {
     #[clap(short = 'a', long, value_parser)]
     address: Option<String>,
 
-    /// Allow anonymous connections.
+    /// The authentication mechanism to use.
     #[clap(long)]
-    allow_anonymous: bool,
+    #[arg(value_enum, default_value_t = AuthMechanism::External)]
+    auth_mechanism: AuthMechanism,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum AuthMechanism {
+    /// This is the recommended authentication mechanism on platforms where credentials can be
+    /// transferred out-of-band, in particular Unix platforms that can perform credentials-passing
+    /// over UNIX domain sockets.
+    External,
+    /// Does not perform any authentication at all (not recommended).
+    Anonymous,
+}
+
+impl From<AuthMechanism> for zbus::AuthMechanism {
+    fn from(auth_mechanism: AuthMechanism) -> Self {
+        match auth_mechanism {
+            AuthMechanism::External => zbus::AuthMechanism::External,
+            AuthMechanism::Anonymous => zbus::AuthMechanism::Anonymous,
+        }
+    }
 }
 
 #[tokio::main]
@@ -27,7 +47,8 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let mut bus = bus::Bus::for_address(args.address.as_deref(), args.allow_anonymous).await?;
+    let mut bus =
+        bus::Bus::for_address(args.address.as_deref(), args.auth_mechanism.into()).await?;
 
     // FIXME: How to handle this gracefully on Windows?
     #[cfg(unix)]

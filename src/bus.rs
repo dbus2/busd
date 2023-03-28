@@ -8,7 +8,7 @@ use std::{
 #[cfg(unix)]
 use tokio::fs::remove_file;
 use tracing::{debug, info, warn};
-use zbus::{Address, Guid, Socket, TcpAddress};
+use zbus::{Address, AuthMechanism, Guid, Socket, TcpAddress};
 
 use crate::{name_registry::NameRegistry, peer::Peer, peers::Peers};
 
@@ -20,7 +20,7 @@ pub struct Bus {
     guid: Guid,
     next_id: usize,
     name_registry: NameRegistry,
-    allow_anonymous: bool,
+    auth_mechanism: AuthMechanism,
 }
 
 #[derive(Debug)]
@@ -36,7 +36,7 @@ enum Listener {
 }
 
 impl Bus {
-    pub async fn for_address(address: Option<&str>, allow_anonymous: bool) -> Result<Self> {
+    pub async fn for_address(address: Option<&str>, auth_mechanism: AuthMechanism) -> Result<Self> {
         let address = match address {
             Some(address) => address.to_string(),
             None => default_address(),
@@ -47,7 +47,7 @@ impl Bus {
                 let path = Path::new(&path);
                 info!("Listening on {}.", path.display());
 
-                Self::unix_stream(path, allow_anonymous).await
+                Self::unix_stream(path, auth_mechanism).await
             }
             #[cfg(not(unix))]
             Address::Unix(path) => {
@@ -56,7 +56,7 @@ impl Bus {
             Address::Tcp(address) => {
                 info!("Listening on `{}:{}`.", address.host(), address.port());
 
-                Self::tcp_stream(&address, allow_anonymous).await
+                Self::tcp_stream(&address, auth_mechanism).await
             }
             Address::NonceTcp { .. } => {
                 Err(anyhow!("`nonce-tcp` transport is not supported (yet)."))?
@@ -75,7 +75,7 @@ impl Bus {
                 self.next_id,
                 socket,
                 self.name_registry.clone(),
-                self.allow_anonymous,
+                self.auth_mechanism,
             )
             .await
             {
@@ -97,7 +97,7 @@ impl Bus {
         }
     }
 
-    fn new(listener: Listener, allow_anonymous: bool) -> Self {
+    fn new(listener: Listener, auth_mechanism: AuthMechanism) -> Self {
         let name_registry = NameRegistry::default();
 
         Self {
@@ -106,28 +106,28 @@ impl Bus {
             guid: Guid::generate(),
             next_id: 0,
             name_registry,
-            allow_anonymous,
+            auth_mechanism,
         }
     }
 
     #[cfg(unix)]
-    async fn unix_stream(socket_path: &Path, allow_anonymous: bool) -> Result<Self> {
+    async fn unix_stream(socket_path: &Path, auth_mechanism: AuthMechanism) -> Result<Self> {
         let socket_path = socket_path.to_path_buf();
         let listener = Listener::Unix {
             listener: tokio::net::UnixListener::bind(&socket_path)?,
             socket_path,
         };
 
-        Ok(Self::new(listener, allow_anonymous))
+        Ok(Self::new(listener, auth_mechanism))
     }
 
-    async fn tcp_stream(address: &TcpAddress, allow_anonymous: bool) -> Result<Self> {
+    async fn tcp_stream(address: &TcpAddress, auth_mechanism: AuthMechanism) -> Result<Self> {
         let address = (address.host(), address.port());
         let listener = Listener::Tcp {
             listener: tokio::net::TcpListener::bind(address).await?,
         };
 
-        Ok(Self::new(listener, allow_anonymous))
+        Ok(Self::new(listener, auth_mechanism))
     }
 
     async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
