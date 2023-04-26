@@ -317,13 +317,16 @@ dependencies = [
  "enumflags2",
  "fastrand",
  "futures-util",
+ "hex",
  "nix 0.25.0",
  "ntest",
  "parking_lot",
+ "rand",
  "serde",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "xdg-home",
  "zbus",
 ]
 
@@ -803,7 +806,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "memoffset 0.7.1",
- "pin-utils",
  "static_assertions",
 ]
 
@@ -1656,9 +1658,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c811ca4a8c853ef420abd8592ba53ddbbac90410fab6903b3e79972a631f7680"
 
 [[package]]
+name = "xdg-home"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2769203cd13a0c6015d515be729c526d041e9cf2c0cc478d57faee85f40c6dcd"
+dependencies = [
+ "nix 0.26.2",
+ "winapi",
+]
+
+[[package]]
 name = "zbus"
 version = "3.11.1"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#0378af1a1584bc05a4dd2e07c0594741b3646484"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "async-broadcast",
  "async-recursion",
@@ -1684,6 +1696,7 @@ dependencies = [
  "tracing",
  "uds_windows",
  "winapi",
+ "xdg-home",
  "zbus_macros",
  "zbus_names",
  "zvariant",
@@ -1692,7 +1705,7 @@ dependencies = [
 [[package]]
 name = "zbus_macros"
 version = "3.11.1"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#0378af1a1584bc05a4dd2e07c0594741b3646484"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1705,7 +1718,7 @@ dependencies = [
 [[package]]
 name = "zbus_names"
 version = "2.5.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#0378af1a1584bc05a4dd2e07c0594741b3646484"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "serde",
  "static_assertions",
@@ -1715,7 +1728,7 @@ dependencies = [
 [[package]]
 name = "zvariant"
 version = "3.12.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#0378af1a1584bc05a4dd2e07c0594741b3646484"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "byteorder",
  "enumflags2",
@@ -1728,7 +1741,7 @@ dependencies = [
 [[package]]
 name = "zvariant_derive"
 version = "3.12.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#0378af1a1584bc05a4dd2e07c0594741b3646484"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1740,7 +1753,7 @@ dependencies = [
 [[package]]
 name = "zvariant_utils"
 version = "1.0.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#0378af1a1584bc05a4dd2e07c0594741b3646484"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "proc-macro2",
  "quote",
