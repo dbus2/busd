@@ -1,8 +1,12 @@
-use std::{env::temp_dir, iter::repeat_with};
+use std::env::temp_dir;
 
 use anyhow::ensure;
 use dbuz::bus::Bus;
 use ntest::timeout;
+use rand::{
+    distributions::{Alphanumeric, DistString},
+    thread_rng,
+};
 use tokio::{select, sync::oneshot::Sender};
 use tracing::instrument;
 use zbus::{
@@ -20,7 +24,7 @@ async fn name_ownership_changes() {
     // Unix socket
     #[cfg(unix)]
     {
-        let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
+        let s = Alphanumeric.sample_string(&mut thread_rng(), 10);
         let path = temp_dir().join(s);
         let address = format!("unix:path={}", path.display());
         name_ownership_changes_(&address, AuthMechanism::External).await;

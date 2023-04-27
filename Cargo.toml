@@ -39,8 +39,5 @@ hex = "0.4.3"
 xdg-home = "1.0.0"
 rand = "0.8.5"
 
-[dev-dependencies]
-fastrand = "1.8.0"
-
 [features]
 default = ["tracing-subscriber"]

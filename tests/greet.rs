@@ -1,9 +1,13 @@
-use std::{env::temp_dir, iter::repeat_with, time::Duration};
+use std::{env::temp_dir, time::Duration};
 
 use anyhow::anyhow;
 use dbuz::bus::Bus;
 use futures_util::{pin_mut, stream::StreamExt};
 use ntest::timeout;
+use rand::{
+    distributions::{Alphanumeric, DistString},
+    thread_rng,
+};
 use tokio::{select, sync::mpsc::channel, time::timeout};
 use tracing::instrument;
 use zbus::{
@@ -23,7 +27,7 @@ async fn greet() {
     // Unix socket
     #[cfg(unix)]
     {
-        let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
+        let s = Alphanumeric.sample_string(&mut thread_rng(), 10);
         let path = temp_dir().join(s);
         let address = format!("unix:path={}", path.display());
         greet_(&address, AuthMechanism::External).await;

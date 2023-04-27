@@ -315,7 +315,6 @@ dependencies = [
  "clap",
  "console-subscriber",
  "enumflags2",
- "fastrand",
  "futures-util",
  "hex",
  "nix 0.25.0",
