@@ -28,6 +28,9 @@ enum AuthMechanism {
     /// transferred out-of-band, in particular Unix platforms that can perform credentials-passing
     /// over UNIX domain sockets.
     External,
+    /// This mechanism is designed to establish that a client has the ability to read a private
+    /// file owned by the user being authenticated.
+    Cookie,
     /// Does not perform any authentication at all (not recommended).
     Anonymous,
 }
@@ -36,6 +39,7 @@ impl From<AuthMechanism> for zbus::AuthMechanism {
     fn from(auth_mechanism: AuthMechanism) -> Self {
         match auth_mechanism {
             AuthMechanism::External => zbus::AuthMechanism::External,
+            AuthMechanism::Cookie => zbus::AuthMechanism::Cookie,
             AuthMechanism::Anonymous => zbus::AuthMechanism::Anonymous,
         }
     }

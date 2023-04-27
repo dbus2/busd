@@ -31,6 +31,7 @@ async fn greet() {
 
     // TCP socket
     let address = format!("tcp:host=127.0.0.1,port=4248");
+    greet_(&address, AuthMechanism::Cookie).await;
     greet_(&address, AuthMechanism::Anonymous).await;
 }
 

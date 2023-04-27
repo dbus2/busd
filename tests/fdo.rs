@@ -28,6 +28,7 @@ async fn name_ownership_changes() {
 
     // TCP socket
     let address = format!("tcp:host=127.0.0.1,port=4242");
+    name_ownership_changes_(&address, AuthMechanism::Cookie).await;
     name_ownership_changes_(&address, AuthMechanism::Anonymous).await;
 }
 
