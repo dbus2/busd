@@ -40,8 +40,9 @@ async fn name_ownership_changes_(address: &str, auth_mechanism: AuthMechanism) {
     let handle = tokio::spawn(async move {
         select! {
             _ = rx => (),
-            _ = bus.run() => {
-                panic!("Bus stopped unexpectedly");
+            res = bus.run() => match res {
+                Ok(()) => panic!("Bus exited unexpectedly"),
+                Err(e) => panic!("Bus exited with an error: {}", e),
             }
         }
 

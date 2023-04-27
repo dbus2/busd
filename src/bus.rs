@@ -68,7 +68,7 @@ impl Bus {
         }
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(&mut self) -> Result<()> {
         while let Ok(socket) = self.accept().await {
             match Peer::new(
                 &self.guid,
@@ -84,6 +84,8 @@ impl Bus {
             }
             self.next_id += 1;
         }
+
+        Ok(())
     }
 
     // AsyncDrop would have been nice!

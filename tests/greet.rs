@@ -43,8 +43,9 @@ async fn greet_(socket_addr: &str, auth_mechanism: AuthMechanism) {
     let handle = tokio::spawn(async move {
         select! {
             _ = rx.recv() => (),
-            _ = bus.run() => {
-                panic!("Bus stopped unexpectedly");
+            res = bus.run() => match res {
+                Ok(()) => panic!("Bus exited unexpectedly"),
+                Err(e) => panic!("Bus exited with an error: {}", e),
             }
         }
 

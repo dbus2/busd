@@ -59,13 +59,14 @@ async fn main() -> Result<()> {
             _ = sig_int.recv() => {
                 info!("Received SIGINT, shutting down..");
             }
-            _ = bus.run() => {
-                warn!("Bus stopped, shutting down..");
+            res = bus.run() => match res {
+                Ok(()) => warn!("Bus stopped, shutting down.."),
+                Err(e) => error!("Bus stopped with an error: {}", e),
             }
         }
     }
     #[cfg(not(unix))]
-    bus.run().await;
+    bus.run().await?;
 
     if let Err(e) = bus.cleanup().await {
         error!("Failed to clean up: {}", e);
