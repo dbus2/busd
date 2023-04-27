@@ -63,9 +63,7 @@ impl Bus {
                 Self::unix_stream(path, auth_mechanism).await
             }
             #[cfg(not(unix))]
-            Address::Unix(path) => {
-                Err(anyhow!("`unix` transport on non-UNIX OS is not supported."))?
-            }
+            Address::Unix(_) => Err(anyhow!("`unix` transport on non-UNIX OS is not supported."))?,
             Address::Tcp(address) => {
                 info!("Listening on `{}:{}`.", address.host(), address.port());
 

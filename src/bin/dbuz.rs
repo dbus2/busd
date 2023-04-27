@@ -6,7 +6,9 @@ use anyhow::Result;
 use clap::{Parser, ValueEnum};
 #[cfg(unix)]
 use tokio::{select, signal::unix::SignalKind};
-use tracing::{error, info, warn};
+use tracing::error;
+#[cfg(unix)]
+use tracing::{info, warn};
 
 /// A simple D-Bus broker.
 #[derive(Parser, Debug)]
