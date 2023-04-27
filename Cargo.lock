@@ -315,15 +315,17 @@ dependencies = [
  "clap",
  "console-subscriber",
  "enumflags2",
- "fastrand",
  "futures-util",
+ "hex",
  "nix 0.25.0",
  "ntest",
  "parking_lot",
+ "rand",
  "serde",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "xdg-home",
  "zbus",
 ]
 
@@ -346,26 +348,6 @@ checksum = "adfbc57365a37acbd2ebf2b64d7e69bb766e2fea813521ed536f5d0520dcf86c"
 dependencies = [
  "block-buffer",
  "crypto-common",
-]
-
-[[package]]
-name = "dirs"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca3aa72a6f96ea37bbc5aa912f6788242832f75369bdfdadcb0e38423f100059"
-dependencies = [
- "dirs-sys",
-]
-
-[[package]]
-name = "dirs-sys"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b1d1d91c932ef41c0f2663aa8b0ca0342d444d842c06914aa0a7e352d0bada6"
-dependencies = [
- "libc",
- "redox_users",
- "winapi",
 ]
 
 [[package]]
@@ -823,7 +805,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "memoffset 0.7.1",
- "pin-utils",
  "static_assertions",
 ]
 
@@ -1101,17 +1082,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "534cfe58d6a18cc17120fbf4635d53d14691c1fe4d951064df9bd326178d7d5a"
 dependencies = [
  "bitflags",
-]
-
-[[package]]
-name = "redox_users"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b033d837a7cf162d7993aded9304e30a83213c648b6e389db233191f891e5c2b"
-dependencies = [
- "getrandom",
- "redox_syscall",
- "thiserror",
 ]
 
 [[package]]
@@ -1687,16 +1657,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c811ca4a8c853ef420abd8592ba53ddbbac90410fab6903b3e79972a631f7680"
 
 [[package]]
+name = "xdg-home"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2769203cd13a0c6015d515be729c526d041e9cf2c0cc478d57faee85f40c6dcd"
+dependencies = [
+ "nix 0.26.2",
+ "winapi",
+]
+
+[[package]]
 name = "zbus"
-version = "3.10.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
+version = "3.11.1"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "async-broadcast",
  "async-recursion",
  "async-trait",
  "byteorder",
  "derivative",
- "dirs",
  "enumflags2",
  "event-listener",
  "futures-core",
@@ -1716,6 +1695,7 @@ dependencies = [
  "tracing",
  "uds_windows",
  "winapi",
+ "xdg-home",
  "zbus_macros",
  "zbus_names",
  "zvariant",
@@ -1723,8 +1703,8 @@ dependencies = [
 
 [[package]]
 name = "zbus_macros"
-version = "3.10.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
+version = "3.11.1"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1737,7 +1717,7 @@ dependencies = [
 [[package]]
 name = "zbus_names"
 version = "2.5.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "serde",
  "static_assertions",
@@ -1746,8 +1726,8 @@ dependencies = [
 
 [[package]]
 name = "zvariant"
-version = "3.11.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
+version = "3.12.0"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "byteorder",
  "enumflags2",
@@ -1759,8 +1739,8 @@ dependencies = [
 
 [[package]]
 name = "zvariant_derive"
-version = "3.11.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
+version = "3.12.0"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1771,8 +1751,8 @@ dependencies = [
 
 [[package]]
 name = "zvariant_utils"
-version = "0.1.0"
-source = "git+https://gitlab.freedesktop.org/dbus/zbus/#695e43d28233bfbc75c7f2d94bbddd33b057d3e2"
+version = "1.0.0"
+source = "git+https://gitlab.freedesktop.org/dbus/zbus/#bd577003f402ffd98e27e245f2969622c2ace1d4"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -1,17 +1,21 @@
-use std::{env::temp_dir, iter::repeat_with, time::Duration};
+use std::{env::temp_dir, time::Duration};
 
 use anyhow::anyhow;
 use dbuz::bus::Bus;
 use futures_util::{pin_mut, stream::StreamExt};
 use ntest::timeout;
+use rand::{
+    distributions::{Alphanumeric, DistString},
+    thread_rng,
+};
 use tokio::{select, sync::mpsc::channel, time::timeout};
 use tracing::instrument;
 use zbus::{
     dbus_interface, dbus_proxy,
     fdo::{self, DBusProxy},
     zvariant::ObjectPath,
-    AsyncDrop, CacheProperties, Connection, ConnectionBuilder, MatchRule, MessageHeader,
-    MessageStream, SignalContext,
+    AsyncDrop, AuthMechanism, CacheProperties, Connection, ConnectionBuilder, MatchRule,
+    MessageHeader, MessageStream, SignalContext,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -23,19 +27,20 @@ async fn greet() {
     // Unix socket
     #[cfg(unix)]
     {
-        let s: String = repeat_with(fastrand::alphanumeric).take(10).collect();
+        let s = Alphanumeric.sample_string(&mut thread_rng(), 10);
         let path = temp_dir().join(s);
         let address = format!("unix:path={}", path.display());
-        greet_(&address, false).await;
+        greet_(&address, AuthMechanism::External).await;
     }
 
     // TCP socket
     let address = format!("tcp:host=127.0.0.1,port=4248");
-    greet_(&address, true).await;
+    greet_(&address, AuthMechanism::Cookie).await;
+    greet_(&address, AuthMechanism::Anonymous).await;
 }
 
-async fn greet_(socket_addr: &str, allow_anonymous: bool) {
-    let mut bus = Bus::for_address(Some(socket_addr), allow_anonymous)
+async fn greet_(socket_addr: &str, auth_mechanism: AuthMechanism) {
+    let mut bus = Bus::for_address(Some(socket_addr), auth_mechanism)
         .await
         .unwrap();
     let (tx, mut rx) = channel(1);
@@ -43,8 +48,9 @@ async fn greet_(socket_addr: &str, allow_anonymous: bool) {
     let handle = tokio::spawn(async move {
         select! {
             _ = rx.recv() => (),
-            _ = bus.run() => {
-                panic!("Bus stopped unexpectedly");
+            res = bus.run() => match res {
+                Ok(()) => panic!("Bus exited unexpectedly"),
+                Err(e) => panic!("Bus exited with an error: {}", e),
             }
         }
 

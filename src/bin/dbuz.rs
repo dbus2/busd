@@ -3,10 +3,12 @@ extern crate dbuz;
 use dbuz::bus;
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 #[cfg(unix)]
 use tokio::{select, signal::unix::SignalKind};
-use tracing::{error, info, warn};
+use tracing::error;
+#[cfg(unix)]
+use tracing::{info, warn};
 
 /// A simple D-Bus broker.
 #[derive(Parser, Debug)]
@@ -16,9 +18,33 @@ struct Args {
     #[clap(short = 'a', long, value_parser)]
     address: Option<String>,
 
-    /// Allow anonymous connections.
+    /// The authentication mechanism to use.
     #[clap(long)]
-    allow_anonymous: bool,
+    #[arg(value_enum, default_value_t = AuthMechanism::External)]
+    auth_mechanism: AuthMechanism,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum AuthMechanism {
+    /// This is the recommended authentication mechanism on platforms where credentials can be
+    /// transferred out-of-band, in particular Unix platforms that can perform credentials-passing
+    /// over UNIX domain sockets.
+    External,
+    /// This mechanism is designed to establish that a client has the ability to read a private
+    /// file owned by the user being authenticated.
+    Cookie,
+    /// Does not perform any authentication at all (not recommended).
+    Anonymous,
+}
+
+impl From<AuthMechanism> for zbus::AuthMechanism {
+    fn from(auth_mechanism: AuthMechanism) -> Self {
+        match auth_mechanism {
+            AuthMechanism::External => zbus::AuthMechanism::External,
+            AuthMechanism::Cookie => zbus::AuthMechanism::Cookie,
+            AuthMechanism::Anonymous => zbus::AuthMechanism::Anonymous,
+        }
+    }
 }
 
 #[tokio::main]
@@ -27,7 +53,8 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let mut bus = bus::Bus::for_address(args.address.as_deref(), args.allow_anonymous).await?;
+    let mut bus =
+        bus::Bus::for_address(args.address.as_deref(), args.auth_mechanism.into()).await?;
 
     // FIXME: How to handle this gracefully on Windows?
     #[cfg(unix)]
@@ -38,13 +65,14 @@ async fn main() -> Result<()> {
             _ = sig_int.recv() => {
                 info!("Received SIGINT, shutting down..");
             }
-            _ = bus.run() => {
-                warn!("Bus stopped, shutting down..");
+            res = bus.run() => match res {
+                Ok(()) => warn!("Bus stopped, shutting down.."),
+                Err(e) => error!("Bus stopped with an error: {}", e),
             }
         }
     }
     #[cfg(not(unix))]
-    bus.run().await;
+    bus.run().await?;
 
     if let Err(e) = bus.cleanup().await {
         error!("Failed to clean up: {}", e);
