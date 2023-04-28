@@ -1,4 +1,4 @@
-# Contributing to dbuz
+# Contributing to busd
 
 We welcomes contribution from everyone in the form of suggestions, bug reports, merge requests, and
 feedback. This document gives some guidance if you are thinking of helping us.
@@ -9,7 +9,7 @@ you contribute.
 
 ## Submitting bug reports and feature requests
 
-You can create issues [here](https://github.com/zeenix/dbuz/issues/new). When reporting a bug or
+You can create issues [here](https://github.com/zeenix/busd/issues/new). When reporting a bug or
 asking for help, please include enough details so that the people helping you can reproduce the
 behavior you are seeing. For some tips on how to approach this, read about how to produce a
 [Minimal, Complete, and Verifiable example](https://stackoverflow.com/help/mcve).
@@ -133,6 +133,6 @@ hooks:
 
 ## Conduct
 
-In all dbuz-related forums, we follow the
+In all busd-related forums, we follow the
 [Rust Code of Conduct](https://www.rust-lang.org/conduct.html). For escalation or moderation issues
 please contact Zeeshan (zeeshanak@gnome.org) instead of the Rust moderation team.

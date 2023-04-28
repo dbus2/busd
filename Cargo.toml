@@ -1,5 +1,5 @@
 [package]
-name = "dbuz"
+name = "busd"
 version = "0.1.0"
 authors = ["Zeeshan Ali Khan <zeeshanak@gnome.org>"]
 description = "A simple D-Bus bus (broker) implementation"
@@ -7,17 +7,17 @@ edition = "2021"
 license = "MIT"
 readme = "README.md"
 rust-version = "1.60"
-repository = "https://github.com/zeenix/dbuz"
+repository = "https://github.com/zeenix/busd"
 keywords = ["D-Bus", "DBus", "IPC"]
 categories = ["network-programming"]
 
 [lib]
-name = "dbuz"
+name = "busd"
 path = "src/lib.rs"
 
 [[bin]]
-name = "dbuz"
-path = "src/bin/dbuz.rs"
+name = "busd"
+path = "src/bin/busd.rs"
 
 [dependencies]
 zbus = { git = "https://gitlab.freedesktop.org/dbus/zbus/", features = ["tokio"], default-features = false }
