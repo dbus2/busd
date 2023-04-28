@@ -80,7 +80,8 @@ impl Bus {
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        while let Ok(socket) = self.accept().await {
+        loop {
+            let socket = self.accept().await?;
             if self.auth_mechanism == AuthMechanism::Cookie {
                 sync_cookies().await?;
             }
@@ -98,8 +99,6 @@ impl Bus {
             }
             self.next_id += 1;
         }
-
-        Ok(())
     }
 
     // AsyncDrop would have been nice!
