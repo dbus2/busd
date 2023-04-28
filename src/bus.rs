@@ -10,6 +10,7 @@ use std::{
 use std::{
     io,
     str::FromStr,
+    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 #[cfg(unix)]
@@ -23,16 +24,15 @@ use tracing::{debug, info, instrument, trace, warn};
 use xdg_home::home_dir;
 use zbus::{Address, AuthMechanism, Guid, Socket, TcpAddress};
 
-use crate::{name_registry::NameRegistry, peer::Peer, peers::Peers};
+use crate::{peer::Peer, peers::Peers};
 
 /// The bus.
 #[derive(Debug)]
 pub struct Bus {
-    peers: Peers,
+    peers: Arc<Peers>,
     listener: Listener,
     guid: Guid,
     next_id: usize,
-    name_registry: NameRegistry,
     auth_mechanism: AuthMechanism,
 }
 
@@ -89,8 +89,8 @@ impl Bus {
                 &self.guid,
                 self.next_id,
                 socket,
-                self.name_registry.clone(),
                 self.auth_mechanism,
+                self.peers.clone(),
             )
             .await
             {
@@ -113,14 +113,11 @@ impl Bus {
     }
 
     fn new(listener: Listener, auth_mechanism: AuthMechanism) -> Self {
-        let name_registry = NameRegistry::default();
-
         Self {
             listener,
-            peers: Peers::new(name_registry.clone()),
+            peers: Arc::new(Peers::default()),
             guid: Guid::generate(),
             next_id: 0,
-            name_registry,
             auth_mechanism,
         }
     }

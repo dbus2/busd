@@ -1,6 +1,10 @@
 use anyhow::{anyhow, Context, Result};
 use futures_util::{stream::StreamExt, SinkExt};
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 use tokio::sync::RwLock;
 use tracing::warn;
 use zbus::{
@@ -10,21 +14,14 @@ use zbus::{
 
 use crate::{name_registry::NameRegistry, peer::Peer};
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Default)]
 pub struct Peers {
-    peers: Arc<RwLock<BTreeMap<OwnedUniqueName, Peer>>>,
-    name_registry: NameRegistry,
+    peers: RwLock<BTreeMap<OwnedUniqueName, Peer>>,
+    name_registry: RwLock<NameRegistry>,
 }
 
 impl Peers {
-    pub fn new(name_registry: NameRegistry) -> Self {
-        Self {
-            peers: Arc::new(RwLock::new(BTreeMap::new())),
-            name_registry,
-        }
-    }
-
-    pub async fn add(&self, peer: Peer) {
+    pub async fn add(self: &Arc<Self>, peer: Peer) {
         let unique_name = peer.unique_name().clone();
         let mut peers = self.peers.write().await;
         match peers.get(&unique_name) {
@@ -40,7 +37,23 @@ impl Peers {
         }
     }
 
-    async fn serve_peer(self, mut peer_stream: MessageStream) -> Result<()> {
+    pub async fn peers(&self) -> impl Deref<Target = BTreeMap<OwnedUniqueName, Peer>> + '_ {
+        self.peers.read().await
+    }
+
+    pub async fn peers_mut(&self) -> impl DerefMut<Target = BTreeMap<OwnedUniqueName, Peer>> + '_ {
+        self.peers.write().await
+    }
+
+    pub async fn name_registry(&self) -> impl Deref<Target = NameRegistry> + '_ {
+        self.name_registry.read().await
+    }
+
+    pub async fn name_registry_mut(&self) -> impl DerefMut<Target = NameRegistry> + '_ {
+        self.name_registry.write().await
+    }
+
+    async fn serve_peer(self: Arc<Self>, mut peer_stream: MessageStream) -> Result<()> {
         while let Some(msg) = peer_stream.next().await {
             match msg {
                 Ok(msg) => match msg.message_type() {
@@ -88,7 +101,7 @@ impl Peers {
         match destination {
             BusName::Unique(dest) => self.send_msg_to_unique_name(msg, dest.clone()).await,
             BusName::WellKnown(name) => {
-                let dest = match self.name_registry.lookup(name.clone()) {
+                let dest = match self.name_registry().await.lookup(name.clone()) {
                     Some(dest) => dest,
                     None => {
                         return Err(anyhow!("unknown destination: {}", name));

@@ -1,4 +1,7 @@
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    sync::{Arc, Weak},
+};
 
 use enumflags2::BitFlags;
 use zbus::{
@@ -8,28 +11,35 @@ use zbus::{
     OwnedMatchRule,
 };
 
-use crate::name_registry::NameRegistry;
+use crate::peers::Peers;
 
 #[derive(Debug)]
 pub(super) struct DBus {
     greeted: bool,
     unique_name: OwnedUniqueName,
-    name_registry: NameRegistry,
     match_rules: HashSet<OwnedMatchRule>,
+    peers: Weak<Peers>,
 }
 
 impl DBus {
-    pub(super) fn new(unique_name: OwnedUniqueName, name_registry: NameRegistry) -> Self {
+    pub(super) fn new(unique_name: OwnedUniqueName, peers: Weak<Peers>) -> Self {
         Self {
             greeted: false,
             unique_name,
-            name_registry,
             match_rules: HashSet::new(),
+            peers,
         }
     }
 
     pub(super) fn match_rules(&self) -> impl Iterator<Item = &OwnedMatchRule> {
         self.match_rules.iter()
+    }
+
+    fn peers(&self) -> fdo::Result<Arc<Peers>> {
+        self.peers
+            .upgrade()
+            // Can it happen in any other situation than the bus shutting down?
+            .ok_or_else(|| fdo::Error::Failed("Bus shutting down.".to_string()))
     }
 }
 
@@ -48,25 +58,33 @@ impl DBus {
     }
 
     /// Ask the message bus to assign the given name to the method caller.
-    fn request_name(
+    async fn request_name(
         &self,
         name: OwnedWellKnownName,
         flags: BitFlags<RequestNameFlags>,
-    ) -> RequestNameReply {
-        self.name_registry
-            .request_name(name, self.unique_name.clone(), flags)
+    ) -> fdo::Result<RequestNameReply> {
+        Ok(self.peers()?.name_registry_mut().await.request_name(
+            name,
+            self.unique_name.clone(),
+            flags,
+        ))
     }
 
     /// Ask the message bus to release the method caller's claim to the given name.
-    fn release_name(&self, name: OwnedWellKnownName) -> ReleaseNameReply {
-        self.name_registry
-            .release_name(name.into(), (&*self.unique_name).into())
+    async fn release_name(&self, name: OwnedWellKnownName) -> fdo::Result<ReleaseNameReply> {
+        Ok(self
+            .peers()?
+            .name_registry_mut()
+            .await
+            .release_name(name.into(), (&*self.unique_name).into()))
     }
 
     /// Returns the unique connection name of the primary owner of the name given.
-    fn get_name_owner(&self, name: OwnedBusName) -> fdo::Result<OwnedUniqueName> {
+    async fn get_name_owner(&self, name: OwnedBusName) -> fdo::Result<OwnedUniqueName> {
+        let peers = self.peers()?;
+
         match name.into_inner() {
-            BusName::WellKnown(name) => self.name_registry.lookup(name).ok_or_else(|| {
+            BusName::WellKnown(name) => peers.name_registry().await.lookup(name).ok_or_else(|| {
                 fdo::Error::NameHasNoOwner("Name is not owned by anyone. Take it!".to_string())
             }),
             // FIXME: Not good enough. We need to check if name is actually owned.

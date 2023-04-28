@@ -1,5 +1,7 @@
 mod fdo;
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use tracing::trace;
 use zbus::{
@@ -7,15 +9,15 @@ use zbus::{
     AuthMechanism, Connection, ConnectionBuilder, Guid, MessageStream, Socket,
 };
 
-use crate::name_registry::NameRegistry;
+use crate::{name_registry::NameRegistry, peers::Peers};
 use fdo::DBus;
 
 /// A peer connection.
 #[derive(Debug)]
 pub struct Peer {
     conn: Connection,
-    name_registry: NameRegistry,
     unique_name: OwnedUniqueName,
+    name_registry: NameRegistry,
 }
 
 impl Peer {
@@ -23,18 +25,16 @@ impl Peer {
         guid: &Guid,
         id: usize,
         socket: Box<dyn Socket + 'static>,
-        name_registry: NameRegistry,
         auth_mechanism: AuthMechanism,
+        peers: Arc<Peers>,
     ) -> Result<Self> {
         let unique_name = OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap();
 
+        let dbus = DBus::new(unique_name.clone(), Arc::downgrade(&peers));
         let conn = ConnectionBuilder::socket(socket)
             .server(guid)
             .p2p()
-            .serve_at(
-                "/org/freedesktop/DBus",
-                DBus::new(unique_name.clone(), name_registry.clone()),
-            )?
+            .serve_at("/org/freedesktop/DBus", dbus)?
             .name("org.freedesktop.DBus")?
             .unique_name("org.freedesktop.DBus")?
             .auth_mechanisms(&[auth_mechanism])
@@ -42,10 +42,11 @@ impl Peer {
             .await?;
         trace!("created: {:?}", conn);
 
+        let name_registry = peers.name_registry().await.clone();
         Ok(Self {
             conn,
-            name_registry,
             unique_name,
+            name_registry,
         })
     }
 
