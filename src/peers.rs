@@ -66,7 +66,6 @@ impl Peers {
                             }
                             None => {
                                 if msg.message_type() == MessageType::Signal {
-                                    // FIXME: should be based on match rules.
                                     self.broadcast_msg(msg).await;
                                 } else {
                                     warn!("missing destination field");
