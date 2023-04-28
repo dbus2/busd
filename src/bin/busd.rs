@@ -1,6 +1,6 @@
-extern crate dbuz;
+extern crate busd;
 
-use dbuz::bus;
+use busd::bus;
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
@@ -49,7 +49,7 @@ impl From<AuthMechanism> for zbus::AuthMechanism {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dbuz::tracing_subscriber::init();
+    busd::tracing_subscriber::init();
 
     let args = Args::parse();
 

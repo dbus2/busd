@@ -1,7 +1,7 @@
 use std::{env::temp_dir, time::Duration};
 
 use anyhow::anyhow;
-use dbuz::bus::Bus;
+use busd::bus::Bus;
 use futures_util::{pin_mut, stream::StreamExt};
 use ntest::timeout;
 use rand::{
@@ -22,7 +22,7 @@ use zbus::{
 #[instrument]
 #[timeout(15000)]
 async fn greet() {
-    dbuz::tracing_subscriber::init();
+    busd::tracing_subscriber::init();
 
     // Unix socket
     #[cfg(unix)]

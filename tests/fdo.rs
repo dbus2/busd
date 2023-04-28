@@ -1,7 +1,7 @@
 use std::env::temp_dir;
 
 use anyhow::ensure;
-use dbuz::bus::Bus;
+use busd::bus::Bus;
 use ntest::timeout;
 use rand::{
     distributions::{Alphanumeric, DistString},
@@ -19,7 +19,7 @@ use zbus::{
 #[instrument]
 #[timeout(15000)]
 async fn name_ownership_changes() {
-    dbuz::tracing_subscriber::init();
+    busd::tracing_subscriber::init();
 
     // Unix socket
     #[cfg(unix)]

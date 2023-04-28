@@ -27,7 +27,7 @@ impl Peer {
         name_registry: NameRegistry,
         auth_mechanism: AuthMechanism,
     ) -> Result<Self> {
-        let unique_name = OwnedUniqueName::try_from(format!(":dbuz.{id}")).unwrap();
+        let unique_name = OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap();
 
         let conn = ConnectionBuilder::socket(socket)
             .server(guid)
