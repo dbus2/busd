@@ -10,7 +10,7 @@ use rand::{
 use tokio::{select, sync::oneshot::Sender};
 use tracing::instrument;
 use zbus::{
-    fdo::{DBusProxy, ReleaseNameReply, RequestNameFlags, RequestNameReply},
+    fdo::{self, DBusProxy, ReleaseNameReply, RequestNameFlags, RequestNameReply},
     names::WellKnownName,
     AuthMechanism, CacheProperties, ConnectionBuilder,
 };
@@ -100,7 +100,17 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
     // Check that first client is the primary owner before it releases the name.
     ensure!(ret == RequestNameReply::InQueue, "expected to be in queue");
     let owner = dbus_proxy.get_name_owner(name.clone().into()).await?;
-    ensure!(owner == *conn.unique_name().unwrap(), "unexpected owner");
+    let unique_name = conn.unique_name().unwrap().clone();
+    ensure!(owner == unique_name, "unexpected owner");
+    let owner = dbus_proxy
+        .get_name_owner(unique_name.clone().into())
+        .await?;
+    ensure!(owner == unique_name, "unexpected owner");
+    let res = dbus_proxy.get_name_owner(":1.3333".try_into()?).await;
+    ensure!(
+        matches!(res, Err(fdo::Error::NameHasNoOwner(_))),
+        "expected error"
+    );
 
     // Now the first client releases name.
     let ret = dbus_proxy.release_name(name.clone()).await?;

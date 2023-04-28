@@ -87,8 +87,15 @@ impl DBus {
             BusName::WellKnown(name) => peers.name_registry().await.lookup(name).ok_or_else(|| {
                 fdo::Error::NameHasNoOwner("Name is not owned by anyone. Take it!".to_string())
             }),
-            // FIXME: Not good enough. We need to check if name is actually owned.
-            BusName::Unique(name) => Ok(name.into()),
+            BusName::Unique(name) => {
+                if peers.peers().await.contains_key(&*name) {
+                    Ok(name.into())
+                } else {
+                    Err(fdo::Error::NameHasNoOwner(
+                        "Name is not owned by anyone.".to_string(),
+                    ))
+                }
+            }
         }
     }
 
