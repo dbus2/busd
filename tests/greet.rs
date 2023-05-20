@@ -64,7 +64,7 @@ async fn greet_(socket_addr: &str, auth_mechanism: AuthMechanism) {
     let _ = tx.send(()).await;
     let bus = handle.await.unwrap();
     bus.cleanup().await.unwrap();
-    ret.unwrap();
+    let _ = ret.unwrap();
 }
 
 #[instrument]
