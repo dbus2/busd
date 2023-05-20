@@ -7,7 +7,7 @@ edition = "2021"
 license = "MIT"
 readme = "README.md"
 rust-version = "1.60"
-repository = "https://github.com/zeenix/busd"
+repository = "https://github.com/dbus2/busd"
 keywords = ["D-Bus", "DBus", "IPC"]
 categories = ["network-programming"]
 
