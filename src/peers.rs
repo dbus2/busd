@@ -55,43 +55,46 @@ impl Peers {
 
     async fn serve_peer(self: Arc<Self>, mut peer_stream: MessageStream) -> Result<()> {
         while let Some(msg) = peer_stream.next().await {
-            match msg {
-                Ok(msg) => match msg.message_type() {
-                    MessageType::MethodCall
-                    | MessageType::MethodReturn
-                    | MessageType::Error
-                    | MessageType::Signal => {
-                        let fields = match msg.fields() {
-                            Ok(fields) => fields,
-                            Err(e) => {
-                                warn!("failed to parse message: {}", e);
-                                continue;
-                            }
-                        };
-                        match fields.get_field(MessageFieldCode::Destination) {
-                            Some(MessageField::Destination(dest)) => {
-                                if let Err(e) = self.send_msg(msg.clone(), dest.clone()).await {
-                                    warn!("{}", e);
-                                }
-                            }
-                            Some(_) => {
-                                warn!("failed to parse message: Missing destination");
-                            }
-                            None => {
-                                if msg.message_type() == MessageType::Signal {
-                                    self.broadcast_msg(msg).await;
-                                } else {
-                                    warn!("missing destination field");
-                                }
-                            }
-                        };
-                    }
-                    MessageType::Invalid => todo!(),
-                },
+            let msg = match msg {
+                Ok(msg) => msg,
                 Err(e) => {
                     warn!("Error: {:?}", e);
+
+                    continue;
                 }
-            }
+            };
+            let fields = match msg.message_type() {
+                MessageType::MethodCall
+                | MessageType::MethodReturn
+                | MessageType::Error
+                | MessageType::Signal => match msg.fields() {
+                    Ok(fields) => fields,
+                    Err(e) => {
+                        warn!("failed to parse message: {}", e);
+
+                        continue;
+                    }
+                },
+                MessageType::Invalid => todo!(),
+            };
+
+            match fields.get_field(MessageFieldCode::Destination) {
+                Some(MessageField::Destination(dest)) => {
+                    if let Err(e) = self.send_msg(msg.clone(), dest.clone()).await {
+                        warn!("{}", e);
+                    }
+                }
+                Some(_) => {
+                    warn!("failed to parse message: Missing destination");
+                }
+                None => {
+                    if msg.message_type() == MessageType::Signal {
+                        self.broadcast_msg(msg).await;
+                    } else {
+                        warn!("missing destination field");
+                    }
+                }
+            };
         }
 
         Ok(())
