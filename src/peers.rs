@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use futures_util::{stream::StreamExt, SinkExt};
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 use std::{
     collections::BTreeMap,
     ops::{Deref, DerefMut},
@@ -9,7 +11,8 @@ use tokio::sync::RwLock;
 use tracing::{trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
-    MessageField, MessageFieldCode, MessageStream, MessageType,
+    zvariant::Type,
+    MessageBuilder, MessageField, MessageFieldCode, MessageStream, MessageType,
 };
 
 use crate::{name_registry::NameRegistry, peer::Peer};
@@ -31,7 +34,7 @@ impl Peers {
             ),
             None => {
                 let peer_stream = peer.stream();
-                tokio::spawn(self.clone().serve_peer(peer_stream));
+                tokio::spawn(self.clone().serve_peer(peer_stream, unique_name.clone()));
                 peers.insert(unique_name, peer);
             }
         }
@@ -53,7 +56,11 @@ impl Peers {
         self.name_registry.write().await
     }
 
-    async fn serve_peer(self: Arc<Self>, mut peer_stream: MessageStream) -> Result<()> {
+    async fn serve_peer(
+        self: Arc<Self>,
+        mut peer_stream: MessageStream,
+        unique_name: OwnedUniqueName,
+    ) -> Result<()> {
         while let Some(msg) = peer_stream.next().await {
             let msg = match msg {
                 Ok(msg) => msg,
@@ -76,6 +83,67 @@ impl Peers {
                     }
                 },
                 MessageType::Invalid => todo!(),
+            };
+            // Ensure sender field is present. If it is not we add it using the unique name of the peer.
+            let (msg, fields) = match fields.get_field(MessageFieldCode::Sender) {
+                Some(MessageField::Sender(sender)) if *sender == unique_name => {
+                    (msg.clone(), fields)
+                }
+                Some(_) => {
+                    warn!("failed to parse message: Invalid sender field");
+
+                    continue;
+                }
+                None => {
+                    let header = match msg.header() {
+                        Ok(hdr) => hdr,
+                        Err(e) => {
+                            warn!("failed to parse message: {}", e);
+
+                            continue;
+                        }
+                    };
+                    let signature = match header.signature() {
+                        Ok(Some(sig)) => sig.clone(),
+                        Ok(None) => <()>::signature(),
+                        Err(e) => {
+                            warn!("Failed to parse signature from message: {}", e);
+
+                            continue;
+                        }
+                    };
+                    let body_bytes = match msg.body_as_bytes() {
+                        Ok(bytes) => bytes,
+                        Err(e) => {
+                            warn!("failed to parse message: {}", e);
+
+                            continue;
+                        }
+                    };
+                    let builder = MessageBuilder::from(header.clone()).sender(&unique_name)?;
+                    let new_msg = match unsafe {
+                        builder.build_raw_body(
+                            body_bytes,
+                            signature,
+                            #[cfg(unix)]
+                            msg.take_fds().iter().map(|fd| fd.as_raw_fd()).collect(),
+                        )
+                    } {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            warn!("failed to parse message: {}", e);
+
+                            continue;
+                        }
+                    };
+
+                    // SAFETY: We take the fields verbatim from the original message so we can
+                    // assume it has valid fields.
+                    let fields = msg.fields().expect("Missing message header fields");
+
+                    trace!("Added sender field to message: {:?}", new_msg);
+                    (Arc::new(new_msg), fields)
+                }
             };
 
             match fields.get_field(MessageFieldCode::Destination) {
