@@ -58,7 +58,7 @@ impl Peers {
             let msg = match msg {
                 Ok(msg) => msg,
                 Err(e) => {
-                    warn!("Error: {:?}", e);
+                    warn!("Error: {}", e);
 
                     continue;
                 }
