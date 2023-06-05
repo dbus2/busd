@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use futures_util::TryFutureExt;
 use rand::Rng;
 #[cfg(unix)]
 use std::{
@@ -10,6 +11,7 @@ use std::{
 use std::{
     io,
     str::FromStr,
+    sync::{Arc, OnceLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 #[cfg(unix)]
@@ -21,19 +23,19 @@ use tokio::{
 };
 use tracing::{debug, info, instrument, trace, warn};
 use xdg_home::home_dir;
-use zbus::{Address, AuthMechanism, Guid, Socket, TcpAddress};
+use zbus::{Address, AuthMechanism, Connection, ConnectionBuilder, Guid, Socket, TcpAddress};
 
-use crate::{name_registry::NameRegistry, peer::Peer, peers::Peers};
+use crate::{fdo::DBus, peer::Peer, peers::Peers};
 
 /// The bus.
 #[derive(Debug)]
 pub struct Bus {
-    peers: Peers,
+    peers: Arc<Peers>,
     listener: Listener,
     guid: Guid,
-    next_id: usize,
-    name_registry: NameRegistry,
+    next_id: Option<usize>,
     auth_mechanism: AuthMechanism,
+    self_dial_conn: OnceLock<Connection>,
 }
 
 #[derive(Debug)]
@@ -54,7 +56,8 @@ impl Bus {
             Some(address) => address.to_string(),
             None => default_address(),
         };
-        match Address::from_str(&address)? {
+        let address = Address::from_str(&address)?;
+        let mut bus = match &address {
             #[cfg(unix)]
             Address::Unix(path) => {
                 let path = Path::new(&path);
@@ -67,7 +70,7 @@ impl Bus {
             Address::Tcp(address) => {
                 info!("Listening on `{}:{}`.", address.host(), address.port());
 
-                Self::tcp_stream(&address, auth_mechanism).await
+                Self::tcp_stream(address, auth_mechanism).await
             }
             Address::NonceTcp { .. } => {
                 Err(anyhow!("`nonce-tcp` transport is not supported (yet)."))?
@@ -76,30 +79,35 @@ impl Bus {
                 Err(anyhow!("`autolaunch` transport is not supported (yet)."))?
             }
             _ => Err(anyhow!("Unsupported address `{}`.", address))?,
-        }
+        }?;
+
+        // Create a peer for ourselves.
+        let dbus = DBus::new(bus.peers.clone());
+        trace!("Creating self-dial connection.");
+        let conn_builder_fut = ConnectionBuilder::address(address)?
+            .serve_at("/org/freedesktop/DBus", dbus)?
+            .auth_mechanisms(&[auth_mechanism])
+            .p2p()
+            .unique_name("org.freedesktop.DBus")?
+            .build()
+            .map_err(Into::into);
+
+        let (self_dial_conn, self_dial_peer) =
+            futures_util::try_join!(conn_builder_fut, bus.accept_next())?;
+        trace!("Self-dial connection created.");
+        bus.peers.add(self_dial_peer).await;
+        bus.self_dial_conn.set(self_dial_conn).unwrap();
+
+        Ok(bus)
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        while let Ok(socket) = self.accept().await {
-            if self.auth_mechanism == AuthMechanism::Cookie {
-                sync_cookies().await?;
-            }
-            match Peer::new(
-                &self.guid,
-                self.next_id,
-                socket,
-                self.name_registry.clone(),
-                self.auth_mechanism,
-            )
-            .await
-            {
+        loop {
+            match self.accept_next().await {
                 Ok(peer) => self.peers.add(peer).await,
                 Err(e) => warn!("Failed to establish connection: {}", e),
             }
-            self.next_id += 1;
         }
-
-        Ok(())
     }
 
     // AsyncDrop would have been nice!
@@ -114,15 +122,13 @@ impl Bus {
     }
 
     fn new(listener: Listener, auth_mechanism: AuthMechanism) -> Self {
-        let name_registry = NameRegistry::default();
-
         Self {
             listener,
-            peers: Peers::new(name_registry.clone()),
+            peers: Arc::new(Peers::default()),
             guid: Guid::generate(),
-            next_id: 0,
-            name_registry,
+            next_id: None,
             auth_mechanism,
+            self_dial_conn: OnceLock::new(),
         }
     }
 
@@ -144,6 +150,29 @@ impl Bus {
         };
 
         Ok(Self::new(listener, auth_mechanism))
+    }
+
+    async fn accept_next(&mut self) -> Result<Peer> {
+        let socket = self.accept().await?;
+        if self.auth_mechanism == AuthMechanism::Cookie {
+            sync_cookies().await?;
+        }
+        Peer::new(
+            &self.guid,
+            self.next_id,
+            socket,
+            self.auth_mechanism,
+            self.peers.clone(),
+        )
+        .await
+        .map(|peer| {
+            match self.next_id.as_mut() {
+                Some(id) => *id += 1,
+                None => self.next_id = Some(0),
+            }
+
+            peer
+        })
     }
 
     async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {

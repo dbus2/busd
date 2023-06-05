@@ -1,30 +1,30 @@
 use anyhow::{anyhow, Context, Result};
 use futures_util::{stream::StreamExt, SinkExt};
-use std::{collections::BTreeMap, sync::Arc};
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+use std::{
+    collections::BTreeMap,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 use tokio::sync::RwLock;
-use tracing::warn;
+use tracing::{trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
-    MessageField, MessageFieldCode, MessageStream, MessageType,
+    zvariant::Type,
+    MessageBuilder, MessageField, MessageFieldCode, MessageStream, MessageType,
 };
 
 use crate::{name_registry::NameRegistry, peer::Peer};
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Default)]
 pub struct Peers {
-    peers: Arc<RwLock<BTreeMap<OwnedUniqueName, Peer>>>,
-    name_registry: NameRegistry,
+    peers: RwLock<BTreeMap<OwnedUniqueName, Peer>>,
+    name_registry: RwLock<NameRegistry>,
 }
 
 impl Peers {
-    pub fn new(name_registry: NameRegistry) -> Self {
-        Self {
-            peers: Arc::new(RwLock::new(BTreeMap::new())),
-            name_registry,
-        }
-    }
-
-    pub async fn add(&self, peer: Peer) {
+    pub async fn add(self: &Arc<Self>, peer: Peer) {
         let unique_name = peer.unique_name().clone();
         let mut peers = self.peers.write().await;
         match peers.get(&unique_name) {
@@ -34,62 +34,150 @@ impl Peers {
             ),
             None => {
                 let peer_stream = peer.stream();
-                tokio::spawn(self.clone().serve_peer(peer_stream));
+                tokio::spawn(self.clone().serve_peer(peer_stream, unique_name.clone()));
                 peers.insert(unique_name, peer);
             }
         }
     }
 
-    async fn serve_peer(self, mut peer_stream: MessageStream) -> Result<()> {
+    pub async fn peers(&self) -> impl Deref<Target = BTreeMap<OwnedUniqueName, Peer>> + '_ {
+        self.peers.read().await
+    }
+
+    pub async fn peers_mut(&self) -> impl DerefMut<Target = BTreeMap<OwnedUniqueName, Peer>> + '_ {
+        self.peers.write().await
+    }
+
+    pub async fn name_registry(&self) -> impl Deref<Target = NameRegistry> + '_ {
+        self.name_registry.read().await
+    }
+
+    pub async fn name_registry_mut(&self) -> impl DerefMut<Target = NameRegistry> + '_ {
+        self.name_registry.write().await
+    }
+
+    async fn serve_peer(
+        self: Arc<Self>,
+        mut peer_stream: MessageStream,
+        unique_name: OwnedUniqueName,
+    ) -> Result<()> {
         while let Some(msg) = peer_stream.next().await {
-            match msg {
-                Ok(msg) => match msg.message_type() {
-                    MessageType::MethodCall
-                    | MessageType::MethodReturn
-                    | MessageType::Error
-                    | MessageType::Signal => {
-                        let fields = match msg.fields() {
-                            Ok(fields) => fields,
-                            Err(e) => {
-                                warn!("failed to parse message: {}", e);
-                                continue;
-                            }
-                        };
-                        match fields.get_field(MessageFieldCode::Destination) {
-                            Some(MessageField::Destination(dest)) => {
-                                if let Err(e) = self.send_msg(msg.clone(), dest.clone()).await {
-                                    warn!("{}", e);
-                                }
-                            }
-                            Some(_) => {
-                                warn!("failed to parse message: Missing destination");
-                            }
-                            None => {
-                                if msg.message_type() == MessageType::Signal {
-                                    // FIXME: should be based on match rules.
-                                    self.broadcast_msg(msg).await;
-                                } else {
-                                    warn!("missing destination field");
-                                }
-                            }
-                        };
-                    }
-                    MessageType::Invalid => todo!(),
-                },
+            let msg = match msg {
+                Ok(msg) => msg,
                 Err(e) => {
-                    warn!("Error: {:?}", e);
+                    warn!("Error: {}", e);
+
+                    continue;
                 }
-            }
+            };
+            let fields = match msg.message_type() {
+                MessageType::MethodCall
+                | MessageType::MethodReturn
+                | MessageType::Error
+                | MessageType::Signal => match msg.fields() {
+                    Ok(fields) => fields,
+                    Err(e) => {
+                        warn!("failed to parse message: {}", e);
+
+                        continue;
+                    }
+                },
+                MessageType::Invalid => todo!(),
+            };
+            // Ensure sender field is present. If it is not we add it using the unique name of the peer.
+            let (msg, fields) = match fields.get_field(MessageFieldCode::Sender) {
+                Some(MessageField::Sender(sender)) if *sender == unique_name => {
+                    (msg.clone(), fields)
+                }
+                Some(_) => {
+                    warn!("failed to parse message: Invalid sender field");
+
+                    continue;
+                }
+                None => {
+                    let header = match msg.header() {
+                        Ok(hdr) => hdr,
+                        Err(e) => {
+                            warn!("failed to parse message: {}", e);
+
+                            continue;
+                        }
+                    };
+                    let signature = match header.signature() {
+                        Ok(Some(sig)) => sig.clone(),
+                        Ok(None) => <()>::signature(),
+                        Err(e) => {
+                            warn!("Failed to parse signature from message: {}", e);
+
+                            continue;
+                        }
+                    };
+                    let body_bytes = match msg.body_as_bytes() {
+                        Ok(bytes) => bytes,
+                        Err(e) => {
+                            warn!("failed to parse message: {}", e);
+
+                            continue;
+                        }
+                    };
+                    let builder = MessageBuilder::from(header.clone()).sender(&unique_name)?;
+                    let new_msg = match unsafe {
+                        builder.build_raw_body(
+                            body_bytes,
+                            signature,
+                            #[cfg(unix)]
+                            msg.take_fds().iter().map(|fd| fd.as_raw_fd()).collect(),
+                        )
+                    } {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            warn!("failed to parse message: {}", e);
+
+                            continue;
+                        }
+                    };
+
+                    // SAFETY: We take the fields verbatim from the original message so we can
+                    // assume it has valid fields.
+                    let fields = msg.fields().expect("Missing message header fields");
+
+                    trace!("Added sender field to message: {:?}", new_msg);
+                    (Arc::new(new_msg), fields)
+                }
+            };
+
+            match fields.get_field(MessageFieldCode::Destination) {
+                Some(MessageField::Destination(dest)) => {
+                    if let Err(e) = self.send_msg(msg.clone(), dest.clone()).await {
+                        warn!("{}", e);
+                    }
+                }
+                Some(_) => {
+                    warn!("failed to parse message: Missing destination");
+                }
+                None => {
+                    if msg.message_type() == MessageType::Signal {
+                        self.broadcast_msg(msg).await;
+                    } else {
+                        warn!("missing destination field");
+                    }
+                }
+            };
         }
 
         Ok(())
     }
 
     async fn send_msg(&self, msg: Arc<zbus::Message>, destination: BusName<'_>) -> Result<()> {
+        trace!(
+            "Forwarding message: {:?}, destination: {}",
+            msg,
+            destination
+        );
         match destination {
             BusName::Unique(dest) => self.send_msg_to_unique_name(msg, dest.clone()).await,
             BusName::WellKnown(name) => {
-                let dest = match self.name_registry.lookup(name.clone()) {
+                let dest = match self.name_registry().await.lookup(name.clone()) {
                     Some(dest) => dest,
                     None => {
                         return Err(anyhow!("unknown destination: {}", name));
@@ -118,6 +206,7 @@ impl Peers {
     }
 
     async fn broadcast_msg(&self, msg: Arc<zbus::Message>) {
+        trace!("Braadcasting message: {:?}", msg);
         for peer in self.peers.read().await.values() {
             if !peer.interested(&msg).await {
                 continue;

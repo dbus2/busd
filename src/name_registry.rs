@@ -1,17 +1,13 @@
 use enumflags2::BitFlags;
-use parking_lot::RwLock;
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::Arc,
-};
+use std::collections::{HashMap, VecDeque};
 use zbus::{
     fdo::{ReleaseNameReply, RequestNameFlags, RequestNameReply},
     names::{OwnedUniqueName, OwnedWellKnownName, UniqueName, WellKnownName},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct NameRegistry {
-    names: Arc<RwLock<HashMap<OwnedWellKnownName, NameEntry>>>,
+    names: HashMap<OwnedWellKnownName, NameEntry>,
 }
 
 #[derive(Clone, Debug)]
@@ -28,7 +24,7 @@ pub struct NameOwner {
 
 impl NameRegistry {
     pub fn request_name(
-        &self,
+        &mut self,
         name: OwnedWellKnownName,
         unique_name: OwnedUniqueName,
         flags: BitFlags<RequestNameFlags>,
@@ -38,9 +34,8 @@ impl NameRegistry {
             unique_name,
             allow_replacement: flags.contains(RequestNameFlags::AllowReplacement),
         };
-        let mut names = self.names.write();
 
-        match names.get_mut(&name) {
+        match self.names.get_mut(&name) {
             Some(entry) => {
                 if entry.owner.unique_name == owner.unique_name {
                     RequestNameReply::AlreadyOwner
@@ -59,7 +54,7 @@ impl NameRegistry {
                 }
             }
             None => {
-                names.insert(
+                self.names.insert(
                     name,
                     NameEntry {
                         owner,
@@ -72,16 +67,15 @@ impl NameRegistry {
         }
     }
 
-    pub fn release_name(&self, name: WellKnownName, owner: UniqueName) -> ReleaseNameReply {
+    pub fn release_name(&mut self, name: WellKnownName, owner: UniqueName) -> ReleaseNameReply {
         // TODO: Emit all signals.
-        let mut names = self.names.write();
-        match names.get_mut(name.as_str()) {
+        match self.names.get_mut(name.as_str()) {
             Some(entry) => {
                 if *entry.owner.unique_name == owner {
                     if let Some(owner) = entry.waiting_list.pop_front() {
                         entry.owner = owner;
                     } else {
-                        names.remove(name.as_str());
+                        self.names.remove(name.as_str());
                     }
 
                     ReleaseNameReply::Released
@@ -103,16 +97,7 @@ impl NameRegistry {
 
     pub fn lookup(&self, name: WellKnownName) -> Option<OwnedUniqueName> {
         self.names
-            .read()
             .get(name.as_str())
             .map(|e| e.owner.unique_name.clone())
-    }
-}
-
-impl Default for NameRegistry {
-    fn default() -> Self {
-        Self {
-            names: Arc::new(RwLock::new(HashMap::new())),
-        }
     }
 }
