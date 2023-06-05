@@ -1,42 +1,41 @@
-mod fdo;
-
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::Result;
 use tracing::trace;
 use zbus::{
+    fdo,
     names::{BusName, OwnedUniqueName},
-    AuthMechanism, Connection, ConnectionBuilder, Guid, MessageStream, Socket,
+    AuthMechanism, Connection, ConnectionBuilder, Guid, MessageStream, OwnedMatchRule, Socket,
 };
 
 use crate::{name_registry::NameRegistry, peers::Peers};
-use fdo::DBus;
 
 /// A peer connection.
 #[derive(Debug)]
 pub struct Peer {
+    greeted: bool,
     conn: Connection,
     unique_name: OwnedUniqueName,
     name_registry: NameRegistry,
+    match_rules: HashSet<OwnedMatchRule>,
 }
 
 impl Peer {
     pub async fn new(
         guid: &Guid,
-        id: usize,
+        id: Option<usize>,
         socket: Box<dyn Socket + 'static>,
         auth_mechanism: AuthMechanism,
         peers: Arc<Peers>,
     ) -> Result<Self> {
-        let unique_name = OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap();
+        let unique_name = match id {
+            Some(id) => OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap(),
+            None => OwnedUniqueName::try_from("org.freedesktop.DBus").unwrap(),
+        };
 
-        let dbus = DBus::new(unique_name.clone(), Arc::downgrade(&peers));
         let conn = ConnectionBuilder::socket(socket)
             .server(guid)
             .p2p()
-            .serve_at("/org/freedesktop/DBus", dbus)?
-            .name("org.freedesktop.DBus")?
-            .unique_name("org.freedesktop.DBus")?
             .auth_mechanisms(&[auth_mechanism])
             .build()
             .await?;
@@ -47,6 +46,8 @@ impl Peer {
             conn,
             unique_name,
             name_registry,
+            match_rules: HashSet::new(),
+            greeted: false,
         })
     }
 
@@ -66,16 +67,9 @@ impl Peer {
     ///
     /// if header, SENDER or DESTINATION is not set.
     pub async fn interested(&self, msg: &zbus::Message) -> bool {
-        let dbus_ref = self
-            .conn
-            .object_server()
-            .interface::<_, DBus>("/org/freedesktop/DBus")
-            .await
-            .expect("DBus interface not found");
-        let dbus = dbus_ref.get().await;
         let hdr = msg.header().expect("received message without header");
 
-        let ret = dbus.match_rules().any(|rule| {
+        let ret = self.match_rules.iter().any(|rule| {
             // First make use of zbus API
             match rule.matches(msg) {
                 Ok(false) => return false,
@@ -126,5 +120,32 @@ impl Peer {
         });
 
         ret
+    }
+
+    pub fn add_match_rule(&mut self, rule: OwnedMatchRule) {
+        self.match_rules.insert(rule);
+    }
+
+    /// Remove the first rule that matches.
+    pub fn remove_match_rule(&mut self, rule: OwnedMatchRule) -> fdo::Result<()> {
+        if !self.match_rules.remove(&rule) {
+            return Err(fdo::Error::MatchRuleNotFound(
+                "No such match rule".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// This is called the first time by each peer after connecting.
+    pub fn hello(&mut self) -> fdo::Result<OwnedUniqueName> {
+        if self.greeted {
+            return Err(fdo::Error::Failed(
+                "Can only call `Hello` method once".to_string(),
+            ));
+        }
+        self.greeted = true;
+
+        Ok(self.unique_name.clone())
     }
 }
