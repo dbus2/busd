@@ -3,7 +3,7 @@ use std::sync::Arc;
 use enumflags2::BitFlags;
 use zbus::{
     dbus_interface,
-    fdo::{self, ReleaseNameReply, RequestNameFlags, RequestNameReply},
+    fdo::{Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result},
     names::{BusName, OwnedUniqueName, OwnedWellKnownName, UniqueName},
     MessageHeader, OwnedMatchRule,
 };
@@ -21,15 +21,15 @@ impl DBus {
     }
 
     /// Helper for D-Bus methods that call a function on a peer.
-    async fn call_mut_on_peer<F, R>(&mut self, func: F, hdr: MessageHeader<'_>) -> fdo::Result<R>
+    async fn call_mut_on_peer<F, R>(&mut self, func: F, hdr: MessageHeader<'_>) -> Result<R>
     where
-        F: FnOnce(&mut Peer) -> fdo::Result<R>,
+        F: FnOnce(&mut Peer) -> Result<R>,
     {
         let name = msg_sender(&hdr);
         let mut peers = self.peers.peers_mut().await;
         let peer = peers
             .get_mut(name.as_str())
-            .ok_or_else(|| fdo::Error::NameHasNoOwner(format!("No such peer: {}", name)))?;
+            .ok_or_else(|| Error::NameHasNoOwner(format!("No such peer: {}", name)))?;
 
         func(peer)
     }
@@ -38,10 +38,7 @@ impl DBus {
 #[dbus_interface(interface = "org.freedesktop.DBus")]
 impl DBus {
     /// Returns the unique name assigned to the connection.
-    async fn hello(
-        &mut self,
-        #[zbus(header)] hdr: MessageHeader<'_>,
-    ) -> fdo::Result<OwnedUniqueName> {
+    async fn hello(&mut self, #[zbus(header)] hdr: MessageHeader<'_>) -> Result<OwnedUniqueName> {
         self.call_mut_on_peer(move |peer| peer.hello(), hdr).await
     }
 
@@ -51,7 +48,7 @@ impl DBus {
         name: OwnedWellKnownName,
         flags: BitFlags<RequestNameFlags>,
         #[zbus(header)] hdr: MessageHeader<'_>,
-    ) -> fdo::Result<RequestNameReply> {
+    ) -> Result<RequestNameReply> {
         let unique_name = msg_sender(&hdr);
         Ok(self.peers.name_registry_mut().await.request_name(
             name,
@@ -65,7 +62,7 @@ impl DBus {
         &self,
         name: OwnedWellKnownName,
         #[zbus(header)] hdr: MessageHeader<'_>,
-    ) -> fdo::Result<ReleaseNameReply> {
+    ) -> Result<ReleaseNameReply> {
         let unique_name = msg_sender(&hdr);
         Ok(self
             .peers
@@ -75,18 +72,18 @@ impl DBus {
     }
 
     /// Returns the unique connection name of the primary owner of the name given.
-    async fn get_name_owner(&self, name: BusName<'_>) -> fdo::Result<OwnedUniqueName> {
+    async fn get_name_owner(&self, name: BusName<'_>) -> Result<OwnedUniqueName> {
         let peers = &self.peers;
 
         match name {
             BusName::WellKnown(name) => peers.name_registry().await.lookup(name).ok_or_else(|| {
-                fdo::Error::NameHasNoOwner("Name is not owned by anyone. Take it!".to_string())
+                Error::NameHasNoOwner("Name is not owned by anyone. Take it!".to_string())
             }),
             BusName::Unique(name) => {
                 if peers.peers().await.contains_key(&*name) {
                     Ok(name.into())
                 } else {
-                    Err(fdo::Error::NameHasNoOwner(
+                    Err(Error::NameHasNoOwner(
                         "Name is not owned by anyone.".to_string(),
                     ))
                 }
@@ -99,7 +96,7 @@ impl DBus {
         &mut self,
         rule: OwnedMatchRule,
         #[zbus(header)] hdr: MessageHeader<'_>,
-    ) -> fdo::Result<()> {
+    ) -> Result<()> {
         self.call_mut_on_peer(
             move |peer| {
                 peer.add_match_rule(rule);
@@ -116,14 +113,14 @@ impl DBus {
         &mut self,
         rule: OwnedMatchRule,
         #[zbus(header)] hdr: MessageHeader<'_>,
-    ) -> fdo::Result<()> {
+    ) -> Result<()> {
         self.call_mut_on_peer(move |peer| peer.remove_match_rule(rule), hdr)
             .await
     }
 
     /// Returns auditing data used by Solaris ADT, in an unspecified binary format.
-    fn get_adt_audit_session_data(&self, _bus_name: BusName<'_>) -> fdo::Result<Vec<u8>> {
-        Err(fdo::Error::NotSupported("Solaris really?".to_string()))
+    fn get_adt_audit_session_data(&self, _bus_name: BusName<'_>) -> Result<Vec<u8>> {
+        Err(Error::NotSupported("Solaris really?".to_string()))
     }
 }
 
