@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::RwLock;
-use tracing::warn;
+use tracing::{trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
     MessageField, MessageFieldCode, MessageStream, MessageType,
@@ -101,6 +101,11 @@ impl Peers {
     }
 
     async fn send_msg(&self, msg: Arc<zbus::Message>, destination: BusName<'_>) -> Result<()> {
+        trace!(
+            "Forwarding message: {:?}, destination: {}",
+            msg,
+            destination
+        );
         match destination {
             BusName::Unique(dest) => self.send_msg_to_unique_name(msg, dest.clone()).await,
             BusName::WellKnown(name) => {
@@ -133,6 +138,7 @@ impl Peers {
     }
 
     async fn broadcast_msg(&self, msg: Arc<zbus::Message>) {
+        trace!("Braadcasting message: {:?}", msg);
         for peer in self.peers.read().await.values() {
             if !peer.interested(&msg).await {
                 continue;
