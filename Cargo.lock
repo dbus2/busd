@@ -1031,9 +1031,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.13.0"
+version = "1.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18a6dbe30758c9f83eb00cbea4ac95966305f5a7772f3f42ebfc7fc7eddbd8e1"
+checksum = "9670a07f94779e00908f3e686eab508878ebb390ba6e604d3a284c00e8d0487b"
 
 [[package]]
 name = "ordered-stream"
@@ -2012,7 +2012,7 @@ dependencies = [
 [[package]]
 name = "zbus"
 version = "3.13.1"
-source = "git+https://github.com/dbus2/zbus/#a41a3e3723a25e476257a2798cef72da12907dcf"
+source = "git+https://github.com/dbus2/zbus/#e87655ba724fb0ba5981368d26b0c97e634b3d20"
 dependencies = [
  "async-broadcast",
  "async-process",
@@ -2047,7 +2047,7 @@ dependencies = [
 [[package]]
 name = "zbus_macros"
 version = "3.13.1"
-source = "git+https://github.com/dbus2/zbus/#a41a3e3723a25e476257a2798cef72da12907dcf"
+source = "git+https://github.com/dbus2/zbus/#e87655ba724fb0ba5981368d26b0c97e634b3d20"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2060,7 +2060,7 @@ dependencies = [
 [[package]]
 name = "zbus_names"
 version = "2.5.1"
-source = "git+https://github.com/dbus2/zbus/#a41a3e3723a25e476257a2798cef72da12907dcf"
+source = "git+https://github.com/dbus2/zbus/#e87655ba724fb0ba5981368d26b0c97e634b3d20"
 dependencies = [
  "serde",
  "static_assertions",
@@ -2070,7 +2070,7 @@ dependencies = [
 [[package]]
 name = "zvariant"
 version = "3.14.0"
-source = "git+https://github.com/dbus2/zbus/#a41a3e3723a25e476257a2798cef72da12907dcf"
+source = "git+https://github.com/dbus2/zbus/#e87655ba724fb0ba5981368d26b0c97e634b3d20"
 dependencies = [
  "byteorder",
  "enumflags2",
@@ -2083,7 +2083,7 @@ dependencies = [
 [[package]]
 name = "zvariant_derive"
 version = "3.14.0"
-source = "git+https://github.com/dbus2/zbus/#a41a3e3723a25e476257a2798cef72da12907dcf"
+source = "git+https://github.com/dbus2/zbus/#e87655ba724fb0ba5981368d26b0c97e634b3d20"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2095,7 +2095,7 @@ dependencies = [
 [[package]]
 name = "zvariant_utils"
 version = "1.0.1"
-source = "git+https://github.com/dbus2/zbus/#a41a3e3723a25e476257a2798cef72da12907dcf"
+source = "git+https://github.com/dbus2/zbus/#e87655ba724fb0ba5981368d26b0c97e634b3d20"
 dependencies = [
  "proc-macro2",
  "quote",
