@@ -4,7 +4,7 @@ use enumflags2::BitFlags;
 use zbus::{
     dbus_interface,
     fdo::{self, ReleaseNameReply, RequestNameFlags, RequestNameReply},
-    names::{BusName, OwnedBusName, OwnedUniqueName, OwnedWellKnownName, UniqueName},
+    names::{BusName, OwnedUniqueName, OwnedWellKnownName, UniqueName},
     MessageHeader, OwnedMatchRule,
 };
 
@@ -75,10 +75,10 @@ impl DBus {
     }
 
     /// Returns the unique connection name of the primary owner of the name given.
-    async fn get_name_owner(&self, name: OwnedBusName) -> fdo::Result<OwnedUniqueName> {
+    async fn get_name_owner(&self, name: BusName<'_>) -> fdo::Result<OwnedUniqueName> {
         let peers = &self.peers;
 
-        match name.into_inner() {
+        match name {
             BusName::WellKnown(name) => peers.name_registry().await.lookup(name).ok_or_else(|| {
                 fdo::Error::NameHasNoOwner("Name is not owned by anyone. Take it!".to_string())
             }),
