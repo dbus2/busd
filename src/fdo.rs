@@ -120,6 +120,11 @@ impl DBus {
         self.call_mut_on_peer(move |peer| peer.remove_match_rule(rule), hdr)
             .await
     }
+
+    /// Returns auditing data used by Solaris ADT, in an unspecified binary format.
+    fn get_adt_audit_session_data(&self, _bus_name: BusName<'_>) -> fdo::Result<Vec<u8>> {
+        Err(fdo::Error::NotSupported("Solaris really?".to_string()))
+    }
 }
 
 /// Helper for getting the peer name from a message header.
