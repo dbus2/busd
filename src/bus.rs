@@ -32,7 +32,7 @@ use crate::{fdo::DBus, peer::Peer, peers::Peers};
 pub struct Bus {
     peers: Arc<Peers>,
     listener: Listener,
-    guid: Guid,
+    guid: Arc<Guid>,
     next_id: Option<usize>,
     auth_mechanism: AuthMechanism,
     self_dial_conn: OnceLock<Connection>,
@@ -82,7 +82,7 @@ impl Bus {
         }?;
 
         // Create a peer for ourselves.
-        let dbus = DBus::new(bus.peers.clone());
+        let dbus = DBus::new(bus.peers.clone(), bus.guid.clone());
         trace!("Creating self-dial connection.");
         let conn_builder_fut = ConnectionBuilder::address(address)?
             .serve_at("/org/freedesktop/DBus", dbus)?
@@ -125,7 +125,7 @@ impl Bus {
         Self {
             listener,
             peers: Arc::new(Peers::default()),
-            guid: Guid::generate(),
+            guid: Arc::new(Guid::generate()),
             next_id: None,
             auth_mechanism,
             self_dial_conn: OnceLock::new(),

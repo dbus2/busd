@@ -7,7 +7,7 @@ use zbus::{
         ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
     },
     names::{BusName, OwnedUniqueName, OwnedWellKnownName, UniqueName},
-    MessageHeader, OwnedMatchRule,
+    Guid, MessageHeader, OwnedMatchRule,
 };
 
 use crate::{peer::Peer, peers::Peers};
@@ -15,11 +15,12 @@ use crate::{peer::Peer, peers::Peers};
 #[derive(Debug)]
 pub(super) struct DBus {
     peers: Arc<Peers>,
+    guid: Arc<Guid>,
 }
 
 impl DBus {
-    pub(super) fn new(peers: Arc<Peers>) -> Self {
-        Self { peers }
+    pub(super) fn new(peers: Arc<Peers>, guid: Arc<Guid>) -> Self {
+        Self { peers, guid }
     }
 
     /// Helper for D-Bus methods that call a function on a peer.
@@ -182,6 +183,11 @@ impl DBus {
                     Error::Failed(format!("Could not determine Unix user ID of `{bus_name}`"))
                 })
             })
+    }
+
+    /// Gets the unique ID of the bus.
+    fn get_id(&self) -> Arc<Guid> {
+        self.guid.clone()
     }
 }
 
