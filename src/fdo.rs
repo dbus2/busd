@@ -3,7 +3,9 @@ use std::sync::Arc;
 use enumflags2::BitFlags;
 use zbus::{
     dbus_interface,
-    fdo::{Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result},
+    fdo::{
+        ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
+    },
     names::{BusName, OwnedUniqueName, OwnedWellKnownName, UniqueName},
     MessageHeader, OwnedMatchRule,
 };
@@ -121,6 +123,65 @@ impl DBus {
     /// Returns auditing data used by Solaris ADT, in an unspecified binary format.
     fn get_adt_audit_session_data(&self, _bus_name: BusName<'_>) -> Result<Vec<u8>> {
         Err(Error::NotSupported("Solaris really?".to_string()))
+    }
+
+    /// Returns as many credentials as possible for the process connected to the server.
+    async fn get_connection_credentials(
+        &self,
+        bus_name: BusName<'_>,
+    ) -> Result<ConnectionCredentials> {
+        let owner = self.get_name_owner(bus_name.clone()).await?;
+        let peers = self.peers.peers().await;
+        let peer = peers
+            .get(&owner)
+            .ok_or_else(|| Error::Failed(format!("Peer `{}` not found", bus_name)))?;
+
+        peer.conn().peer_credentials().await.map_err(|e| {
+            Error::Failed(format!(
+                "Failed to get peer credentials for `{}`: {}",
+                bus_name, e
+            ))
+        })
+    }
+
+    /// Returns the security context used by SELinux, in an unspecified format.
+    #[dbus_interface(name = "GetConnectionSELinuxSecurityContext")]
+    async fn get_connection_selinux_security_context(
+        &self,
+        bus_name: BusName<'_>,
+    ) -> Result<Vec<u8>> {
+        self.get_connection_credentials(bus_name)
+            .await
+            .and_then(|c| {
+                c.into_linux_security_label().ok_or_else(|| {
+                    Error::SELinuxSecurityContextUnknown("Unimplemented".to_string())
+                })
+            })
+    }
+
+    /// Returns the Unix process ID of the process connected to the server.
+    #[dbus_interface(name = "GetConnectionUnixProcessID")]
+    async fn get_connection_unix_process_id(&self, bus_name: BusName<'_>) -> Result<u32> {
+        self.get_connection_credentials(bus_name.clone())
+            .await
+            .and_then(|c| {
+                c.process_id().ok_or_else(|| {
+                    Error::UnixProcessIdUnknown(format!(
+                        "Could not determine Unix user ID of `{bus_name}`"
+                    ))
+                })
+            })
+    }
+
+    /// Returns the Unix user ID of the process connected to the server.
+    async fn get_connection_unix_user(&self, bus_name: BusName<'_>) -> Result<u32> {
+        self.get_connection_credentials(bus_name.clone())
+            .await
+            .and_then(|c| {
+                c.unix_user_id().ok_or_else(|| {
+                    Error::Failed(format!("Could not determine Unix user ID of `{bus_name}`"))
+                })
+            })
     }
 }
 
