@@ -256,6 +256,14 @@ impl DBus {
             "Service activation not yet supported".to_string(),
         ))
     }
+
+    /// Reload server configuration.
+    fn reload_config(&self) -> Result<()> {
+        // TODO: Implement when we support configuration.
+        Err(Error::Failed(
+            "No server configuration to reload.".to_string(),
+        ))
+    }
 }
 
 /// Helper for getting the peer name from a message header.
