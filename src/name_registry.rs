@@ -16,10 +16,26 @@ pub struct NameEntry {
     waiting_list: VecDeque<NameOwner>,
 }
 
+impl NameEntry {
+    pub fn owner(&self) -> &NameOwner {
+        &self.owner
+    }
+
+    pub fn waiting_list(&self) -> impl Iterator<Item = &NameOwner> {
+        self.waiting_list.iter()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct NameOwner {
     unique_name: OwnedUniqueName,
     allow_replacement: bool,
+}
+
+impl NameOwner {
+    pub fn unique_name(&self) -> &OwnedUniqueName {
+        &self.unique_name
+    }
 }
 
 impl NameRegistry {
@@ -99,5 +115,16 @@ impl NameRegistry {
         self.names
             .get(name.as_str())
             .map(|e| e.owner.unique_name.clone())
+    }
+
+    pub fn all_names(&self) -> &HashMap<OwnedWellKnownName, NameEntry> {
+        &self.names
+    }
+
+    pub fn waiting_list(
+        &self,
+        name: WellKnownName<'_>,
+    ) -> Option<impl Iterator<Item = &NameOwner>> {
+        self.names.get(name.as_str()).map(|e| e.waiting_list.iter())
     }
 }

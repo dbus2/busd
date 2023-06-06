@@ -6,7 +6,9 @@ use zbus::{
     fdo::{
         ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
     },
-    names::{BusName, OwnedUniqueName, OwnedWellKnownName, UniqueName},
+    names::{
+        BusName, OwnedBusName, OwnedUniqueName, OwnedWellKnownName, UniqueName, WellKnownName,
+    },
     Guid, MessageHeader, OwnedMatchRule,
 };
 
@@ -188,6 +190,55 @@ impl DBus {
     /// Gets the unique ID of the bus.
     fn get_id(&self) -> Arc<Guid> {
         self.guid.clone()
+    }
+
+    /// Returns a list of all names that can be activated on the bus.
+    fn list_activatable_names(&self) -> &'static [OwnedBusName] {
+        // TODO: Return actual list when we support service activation.
+        &[]
+    }
+
+    /// Returns a list of all currently-owned names on the bus.
+    async fn list_names(&self) -> Vec<OwnedBusName> {
+        let peers = &self.peers;
+        let mut names: Vec<_> = peers
+            .peers()
+            .await
+            .keys()
+            .cloned()
+            .map(|n| BusName::Unique(n.into()).into())
+            .collect();
+        names.extend(
+            peers
+                .name_registry()
+                .await
+                .all_names()
+                .keys()
+                .map(|n| BusName::WellKnown(n.into()).into()),
+        );
+
+        names
+    }
+
+    /// List the connections currently queued for a bus name.
+    async fn list_queued_owners(&self, name: WellKnownName<'_>) -> Result<Vec<OwnedUniqueName>> {
+        self.peers
+            .name_registry()
+            .await
+            .waiting_list(name)
+            .ok_or_else(|| {
+                Error::NameHasNoOwner("Name is not owned by anyone. Take it!".to_string())
+            })
+            .map(|owners| owners.map(|o| o.unique_name()).cloned().collect())
+    }
+
+    /// Checks if the specified name exists (currently has an owner).
+    async fn name_has_owner(&self, name: BusName<'_>) -> Result<bool> {
+        match self.get_name_owner(name).await {
+            Ok(_) => Ok(true),
+            Err(Error::NameHasNoOwner(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 }
 
