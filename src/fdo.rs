@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use enumflags2::BitFlags;
 use zbus::{
@@ -239,6 +239,22 @@ impl DBus {
             Err(Error::NameHasNoOwner(_)) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    /// Tries to launch the executable associated with a name (service activation).
+    fn start_service_by_name(&self, _name: WellKnownName<'_>, _flags: u32) -> Result<u32> {
+        // TODO: Implement when we support service activation.
+        Err(Error::Failed(
+            "Service activation not yet supported".to_string(),
+        ))
+    }
+
+    /// This method adds to or modifies that environment when activating services.
+    fn update_activation_environment(&self, _environment: HashMap<&str, &str>) -> Result<()> {
+        // TODO: Implement when we support service activation.
+        Err(Error::Failed(
+            "Service activation not yet supported".to_string(),
+        ))
     }
 }
 
