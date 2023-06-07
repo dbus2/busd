@@ -7,7 +7,8 @@ use zbus::{
         ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
     },
     names::{
-        BusName, OwnedBusName, OwnedUniqueName, OwnedWellKnownName, UniqueName, WellKnownName,
+        BusName, OwnedBusName, OwnedInterfaceName, OwnedUniqueName, OwnedWellKnownName, UniqueName,
+        WellKnownName,
     },
     Guid, MessageHeader, OwnedMatchRule,
 };
@@ -263,6 +264,35 @@ impl DBus {
         Err(Error::Failed(
             "No server configuration to reload.".to_string(),
         ))
+    }
+
+    //
+    // Propertries
+    //
+
+    /// This property lists abstract “features” provided by the message bus, and can be used by
+    /// clients to detect the capabilities of the message bus with which they are communicating.
+    #[dbus_interface(property)]
+    fn features(&self) -> &'static [String] {
+        &[]
+    }
+
+    /// This property lists interfaces provided by the `/org/freedesktop/DBus` object, and can be
+    /// used by clients to detect the capabilities of the message bus with which they are
+    /// communicating. Unlike the standard Introspectable interface, querying this property does not
+    /// require parsing XML. This property was added in version 1.11.x of the reference
+    /// implementation of the message bus.
+    ///
+    /// The standard `org.freedesktop.DBus` and `org.freedesktop.DBus.Properties` interfaces are not
+    /// included in the value of this property, because their presence can be inferred from the fact
+    /// that a method call on `org.freedesktop.DBus.Properties` asking for properties of
+    /// `org.freedesktop.DBus` was successful. The standard `org.freedesktop.DBus.Peer` and
+    /// `org.freedesktop.DBus.Introspectable` interfaces are not included in the value of this
+    /// property either, because they do not indicate features of the message bus implementation.
+    #[dbus_interface(property)]
+    fn interfaces(&self) -> &'static [OwnedInterfaceName] {
+        // TODO: List `org.freedesktop.DBus.Monitoring` when we support it.
+        &[]
     }
 }
 
