@@ -165,6 +165,12 @@ impl Peers {
             };
         }
 
+        // Stream is done means the peer disconnected. Remove it from the list of peers.
+        self.peers_mut().await.remove(&unique_name);
+        self.name_registry_mut()
+            .await
+            .release_all(unique_name.into());
+
         Ok(())
     }
 

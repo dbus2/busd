@@ -111,6 +111,30 @@ impl NameRegistry {
         }
     }
 
+    pub fn release_all(&mut self, owner: UniqueName) {
+        // Find all names registered and queued by the given owner.
+        let names: Vec<_> = self
+            .names
+            .iter()
+            .filter_map(|(name, entry)| {
+                if *entry.owner.unique_name == owner
+                    || entry
+                        .waiting_list
+                        .iter()
+                        .any(|waiting| *waiting.unique_name == owner)
+                {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        // Now release our claim or waiting list tickets from all these names.
+        for name in names {
+            self.release_name(name.into(), owner.clone());
+        }
+    }
+
     pub fn lookup(&self, name: WellKnownName) -> Option<OwnedUniqueName> {
         self.names
             .get(name.as_str())
