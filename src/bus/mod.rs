@@ -2,14 +2,11 @@ mod cookies;
 
 use anyhow::{anyhow, Result};
 use futures_util::TryFutureExt;
+use std::{cell::OnceCell, str::FromStr, sync::Arc};
 #[cfg(unix)]
 use std::{
     env,
     path::{Path, PathBuf},
-};
-use std::{
-    str::FromStr,
-    sync::{Arc, OnceLock},
 };
 use tokio::fs::remove_file;
 use tracing::{debug, info, trace, warn};
@@ -25,7 +22,7 @@ pub struct Bus {
     guid: Arc<Guid>,
     next_id: Option<usize>,
     auth_mechanism: AuthMechanism,
-    self_dial_conn: OnceLock<Connection>,
+    self_dial_conn: OnceCell<Connection>,
 }
 
 #[derive(Debug)]
@@ -118,7 +115,7 @@ impl Bus {
             guid: Arc::new(Guid::generate()),
             next_id: None,
             auth_mechanism,
-            self_dial_conn: OnceLock::new(),
+            self_dial_conn: OnceCell::new(),
         }
     }
 
