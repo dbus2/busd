@@ -1,7 +1,6 @@
 mod cookies;
 
 use anyhow::{anyhow, Result};
-use futures_util::TryFutureExt;
 use std::{cell::OnceCell, str::FromStr, sync::Arc};
 #[cfg(unix)]
 use std::{
@@ -9,10 +8,10 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::fs::remove_file;
-use tracing::{debug, info, trace, warn};
-use zbus::{Address, AuthMechanism, Connection, ConnectionBuilder, Guid, Socket, TcpAddress};
+use tracing::{debug, info, warn};
+use zbus::{Address, AuthMechanism, Guid, Socket, TcpAddress};
 
-use crate::{fdo::DBus, peer::Peer, peers::Peers};
+use crate::{peer::Peer, peers::Peers, self_dial_conn::SelfDialConn};
 
 /// The bus.
 #[derive(Debug)]
@@ -22,7 +21,7 @@ pub struct Bus {
     guid: Arc<Guid>,
     next_id: Option<usize>,
     auth_mechanism: AuthMechanism,
-    self_dial_conn: OnceCell<Connection>,
+    self_dial_conn: OnceCell<SelfDialConn>,
 }
 
 #[derive(Debug)]
@@ -69,19 +68,8 @@ impl Bus {
         }?;
 
         // Create a peer for ourselves.
-        let dbus = DBus::new(bus.peers.clone(), bus.guid.clone());
-        trace!("Creating self-dial connection.");
-        let conn_builder_fut = ConnectionBuilder::address(address)?
-            .serve_at("/org/freedesktop/DBus", dbus)?
-            .auth_mechanisms(&[auth_mechanism])
-            .p2p()
-            .unique_name("org.freedesktop.DBus")?
-            .build()
-            .map_err(Into::into);
-
         let (self_dial_conn, self_dial_peer) =
-            futures_util::try_join!(conn_builder_fut, bus.accept_next())?;
-        trace!("Self-dial connection created.");
+            SelfDialConn::connect(&mut bus, address.clone()).await?;
         bus.peers.add(self_dial_peer).await;
         bus.self_dial_conn.set(self_dial_conn).unwrap();
 
@@ -139,7 +127,7 @@ impl Bus {
         Ok(Self::new(listener, auth_mechanism))
     }
 
-    async fn accept_next(&mut self) -> Result<Peer> {
+    pub async fn accept_next(&mut self) -> Result<Peer> {
         let socket = self.accept().await?;
         if self.auth_mechanism == AuthMechanism::Cookie {
             cookies::sync().await?;
@@ -181,6 +169,18 @@ impl Bus {
                 Ok(Box::new(tcp_stream))
             }
         }
+    }
+
+    pub fn peers(&self) -> &Arc<Peers> {
+        &self.peers
+    }
+
+    pub fn guid(&self) -> &Arc<Guid> {
+        &self.guid
+    }
+
+    pub fn auth_mechanism(&self) -> AuthMechanism {
+        self.auth_mechanism
     }
 }
 
