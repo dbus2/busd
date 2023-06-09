@@ -10,7 +10,8 @@ use zbus::{
         BusName, OwnedBusName, OwnedInterfaceName, OwnedUniqueName, OwnedWellKnownName, UniqueName,
         WellKnownName,
     },
-    Guid, MessageHeader, OwnedMatchRule,
+    zvariant::Optional,
+    Guid, MessageHeader, OwnedMatchRule, SignalContext,
 };
 
 use crate::{peer::Peer, peers::Peers};
@@ -56,11 +57,12 @@ impl DBus {
         #[zbus(header)] hdr: MessageHeader<'_>,
     ) -> Result<RequestNameReply> {
         let unique_name = msg_sender(&hdr);
-        Ok(self.peers.name_registry_mut().await.request_name(
-            name,
-            unique_name.clone().into(),
-            flags,
-        ))
+        Ok(self
+            .peers
+            .name_registry_mut()
+            .await
+            .request_name(name, unique_name.clone().into(), flags)
+            .await)
     }
 
     /// Ask the message bus to release the method caller's claim to the given name.
@@ -74,7 +76,8 @@ impl DBus {
             .peers
             .name_registry_mut()
             .await
-            .release_name(name.into(), unique_name.clone()))
+            .release_name(name, unique_name.clone().into())
+            .await)
     }
 
     /// Returns the unique connection name of the primary owner of the name given.
@@ -294,6 +297,28 @@ impl DBus {
         // TODO: List `org.freedesktop.DBus.Monitoring` when we support it.
         &[]
     }
+
+    /// This signal indicates that the owner of a name has changed.
+    ///
+    /// It's also the signal to use to detect the appearance of new names on the bus.
+    #[dbus_interface(signal)]
+    pub async fn name_owner_changed(
+        signal_ctxt: &SignalContext<'_>,
+        name: BusName<'_>,
+        old_owner: Optional<UniqueName<'_>>,
+        new_owner: Optional<UniqueName<'_>>,
+    ) -> zbus::Result<()>;
+
+    /// This signal is sent to a specific application when it loses ownership of a name.
+    #[dbus_interface(signal)]
+    pub async fn name_lost(signal_ctxt: &SignalContext<'_>, name: BusName<'_>) -> zbus::Result<()>;
+
+    /// This signal is sent to a specific application when it gains ownership of a name.
+    #[dbus_interface(signal)]
+    pub async fn name_acquired(
+        signal_ctxt: &SignalContext<'_>,
+        name: BusName<'_>,
+    ) -> zbus::Result<()>;
 }
 
 /// Helper for getting the peer name from a message header.

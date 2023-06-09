@@ -7,7 +7,7 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc::Receiver, RwLock};
 use tracing::{trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
@@ -15,15 +15,29 @@ use zbus::{
     MessageBuilder, MessageField, MessageFieldCode, MessageStream, MessageType,
 };
 
-use crate::{name_registry::NameRegistry, peer::Peer};
+use crate::{
+    name_registry::{NameOwnerChanged, NameRegistry},
+    peer::Peer,
+};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Peers {
     peers: RwLock<BTreeMap<OwnedUniqueName, Peer>>,
     name_registry: RwLock<NameRegistry>,
 }
 
 impl Peers {
+    pub fn new() -> (Self, Receiver<NameOwnerChanged>) {
+        let (name_registry, name_changed_rx) = NameRegistry::new();
+        (
+            Self {
+                peers: RwLock::new(BTreeMap::new()),
+                name_registry: RwLock::new(name_registry),
+            },
+            name_changed_rx,
+        )
+    }
+
     pub async fn add(self: &Arc<Self>, peer: Peer) {
         let unique_name = peer.unique_name().clone();
         let mut peers = self.peers.write().await;
@@ -166,10 +180,11 @@ impl Peers {
         }
 
         // Stream is done means the peer disconnected. Remove it from the list of peers.
-        self.peers_mut().await.remove(&unique_name);
         self.name_registry_mut()
             .await
-            .release_all(unique_name.into());
+            .release_all(unique_name.clone())
+            .await;
+        self.peers_mut().await.remove(&unique_name);
 
         Ok(())
     }
