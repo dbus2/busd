@@ -57,8 +57,8 @@ async fn greet_(socket_addr: &str, auth_mechanism: AuthMechanism) {
         bus
     });
 
-    let ret = match greet_service(&socket_addr).await {
-        Ok(service_conn) => greet_client(&socket_addr).await.map(|_| service_conn),
+    let ret = match greet_service(socket_addr).await {
+        Ok(service_conn) => greet_client(socket_addr).await.map(|_| service_conn),
         Err(e) => Err(e),
     };
     let _ = tx.send(()).await;
