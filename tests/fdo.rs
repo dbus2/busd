@@ -119,6 +119,20 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
 
     // Now we try with another connection and we should be queued.
     let conn2 = ConnectionBuilder::address(address)?.build().await?;
+    let conn2_unique_name = conn2.unique_name().unwrap().to_owned();
+    let changed = name_changed_stream.next().await.unwrap();
+    ensure!(
+        changed.args()?.name().as_str() == conn2_unique_name.as_str(),
+        "expected name owner changed signal for the new connections gaining unique name"
+    );
+    ensure!(
+        changed.args()?.old_owner.is_none(),
+        "expected no old owner for the unique name of the second connection"
+    );
+    ensure!(
+        changed.args()?.new_owner.as_ref().unwrap() == conn2_unique_name.as_str(),
+        "expected new owner of the unique name of the second connection to be itself"
+    );
     let dbus_proxy2 = DBusProxy::builder(&conn2)
         .cache_properties(CacheProperties::No)
         .build()
@@ -190,6 +204,39 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
     // Now the second client should be the primary owner.
     let owner = dbus_proxy.get_name_owner(name.clone().into()).await?;
     ensure!(owner == *conn2.unique_name().unwrap(), "unexpected owner");
+
+    drop(name_acquired_stream);
+    drop(dbus_proxy2);
+    drop(conn2);
+
+    // First the bus dropped its well-known names.
+    let changed = name_changed_stream.next().await.unwrap();
+    ensure!(
+        changed.args()?.name().as_str() == name.as_str(),
+        "expected name owner changed signal for the new connections gaining unique name"
+    );
+    ensure!(
+        changed.args()?.new_owner.is_none(),
+        "expected no new owner for our unique name"
+    );
+    ensure!(
+        changed.args()?.old_owner.as_ref().unwrap() == conn2_unique_name.as_str(),
+        "expected old owner to be us"
+    );
+    // Then the bus dropped its unique name.
+    let changed = name_changed_stream.next().await.unwrap();
+    ensure!(
+        changed.args()?.name().as_str() == conn2_unique_name.as_str(),
+        "expected name owner changed signal for the new connections gaining unique name"
+    );
+    ensure!(
+        changed.args()?.new_owner.is_none(),
+        "expected no new owner for our unique name"
+    );
+    ensure!(
+        changed.args()?.old_owner.as_ref().unwrap() == conn2_unique_name.as_str(),
+        "expected old owner to be us"
+    );
 
     tx.send(()).unwrap();
 
