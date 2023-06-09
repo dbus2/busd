@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{mpsc::Receiver, RwLock};
-use tracing::{trace, warn};
+use tracing::{debug, trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
     zvariant::Type,
@@ -221,9 +221,11 @@ impl Peers {
             .get(destination.as_str())
             .map(|peer| peer.conn().clone());
         match conn {
-            Some(mut conn) => conn.send(msg).await.context("failed to send message"),
-            None => Err(anyhow!("no peer for destination `{}`", destination)),
+            Some(mut conn) => conn.send(msg).await.context("failed to send message")?,
+            None => debug!("no peer for destination `{destination}`"),
         }
+
+        Ok(())
     }
 
     async fn broadcast_msg(&self, msg: Arc<zbus::Message>) {
