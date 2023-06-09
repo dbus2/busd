@@ -7,23 +7,42 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use tokio::sync::RwLock;
-use tracing::{trace, warn};
+use tokio::sync::{
+    mpsc::{Receiver, Sender},
+    RwLock,
+};
+use tracing::{debug, trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
     zvariant::Type,
     MessageBuilder, MessageField, MessageFieldCode, MessageStream, MessageType,
 };
 
-use crate::{name_registry::NameRegistry, peer::Peer};
+use crate::{
+    name_registry::{NameOwnerChanged, NameRegistry},
+    peer::Peer,
+};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Peers {
     peers: RwLock<BTreeMap<OwnedUniqueName, Peer>>,
     name_registry: RwLock<NameRegistry>,
+    name_changed_tx: Sender<NameOwnerChanged>,
 }
 
 impl Peers {
+    pub fn new() -> (Self, Receiver<NameOwnerChanged>) {
+        let (name_registry, name_changed_rx) = NameRegistry::new();
+        (
+            Self {
+                peers: RwLock::new(BTreeMap::new()),
+                name_changed_tx: name_registry.name_changed_tx().clone(),
+                name_registry: RwLock::new(name_registry),
+            },
+            name_changed_rx,
+        )
+    }
+
     pub async fn add(self: &Arc<Self>, peer: Peer) {
         let unique_name = peer.unique_name().clone();
         let mut peers = self.peers.write().await;
@@ -35,7 +54,19 @@ impl Peers {
             None => {
                 let peer_stream = peer.stream();
                 tokio::spawn(self.clone().serve_peer(peer_stream, unique_name.clone()));
-                peers.insert(unique_name, peer);
+                peers.insert(unique_name.clone(), peer);
+                drop(peers);
+                if let Err(e) = self
+                    .name_changed_tx
+                    .send(NameOwnerChanged {
+                        name: BusName::from(unique_name.to_owned()).into(),
+                        old_owner: None,
+                        new_owner: Some(unique_name),
+                    })
+                    .await
+                {
+                    debug!("failed to send NameOwnerChanged: {e}");
+                }
             }
         }
     }
@@ -165,6 +196,24 @@ impl Peers {
             };
         }
 
+        // Stream is done means the peer disconnected. Remove it from the list of peers.
+        self.name_registry_mut()
+            .await
+            .release_all(unique_name.clone())
+            .await;
+        if let Err(e) = self
+            .name_changed_tx
+            .send(NameOwnerChanged {
+                name: BusName::from(unique_name.clone()).into(),
+                old_owner: Some(unique_name.clone()),
+                new_owner: None,
+            })
+            .await
+        {
+            debug!("failed to send NameOwnerChanged: {e}");
+        }
+        self.peers_mut().await.remove(&unique_name);
+
         Ok(())
     }
 
@@ -200,9 +249,11 @@ impl Peers {
             .get(destination.as_str())
             .map(|peer| peer.conn().clone());
         match conn {
-            Some(mut conn) => conn.send(msg).await.context("failed to send message"),
-            None => Err(anyhow!("no peer for destination `{}`", destination)),
+            Some(mut conn) => conn.send(msg).await.context("failed to send message")?,
+            None => debug!("no peer for destination `{destination}`"),
         }
+
+        Ok(())
     }
 
     async fn broadcast_msg(&self, msg: Arc<zbus::Message>) {
