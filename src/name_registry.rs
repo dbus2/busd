@@ -209,6 +209,10 @@ impl NameRegistry {
     ) -> Option<impl Iterator<Item = &NameOwner>> {
         self.names.get(name.as_str()).map(|e| e.waiting_list.iter())
     }
+
+    pub fn name_changed_tx(&self) -> &Sender<NameOwnerChanged> {
+        &self.name_changed_tx
+    }
 }
 
 #[derive(Debug)]

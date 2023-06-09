@@ -7,7 +7,10 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use tokio::sync::{mpsc::Receiver, RwLock};
+use tokio::sync::{
+    mpsc::{Receiver, Sender},
+    RwLock,
+};
 use tracing::{debug, trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
@@ -24,6 +27,7 @@ use crate::{
 pub struct Peers {
     peers: RwLock<BTreeMap<OwnedUniqueName, Peer>>,
     name_registry: RwLock<NameRegistry>,
+    name_changed_tx: Sender<NameOwnerChanged>,
 }
 
 impl Peers {
@@ -32,6 +36,7 @@ impl Peers {
         (
             Self {
                 peers: RwLock::new(BTreeMap::new()),
+                name_changed_tx: name_registry.name_changed_tx().clone(),
                 name_registry: RwLock::new(name_registry),
             },
             name_changed_rx,
@@ -49,7 +54,19 @@ impl Peers {
             None => {
                 let peer_stream = peer.stream();
                 tokio::spawn(self.clone().serve_peer(peer_stream, unique_name.clone()));
-                peers.insert(unique_name, peer);
+                peers.insert(unique_name.clone(), peer);
+                drop(peers);
+                if let Err(e) = self
+                    .name_changed_tx
+                    .send(NameOwnerChanged {
+                        name: BusName::from(unique_name.to_owned()).into(),
+                        old_owner: None,
+                        new_owner: Some(unique_name),
+                    })
+                    .await
+                {
+                    debug!("failed to send NameOwnerChanged: {e}");
+                }
             }
         }
     }
@@ -184,6 +201,17 @@ impl Peers {
             .await
             .release_all(unique_name.clone())
             .await;
+        if let Err(e) = self
+            .name_changed_tx
+            .send(NameOwnerChanged {
+                name: BusName::from(unique_name.clone()).into(),
+                old_owner: Some(unique_name.clone()),
+                new_owner: None,
+            })
+            .await
+        {
+            debug!("failed to send NameOwnerChanged: {e}");
+        }
         self.peers_mut().await.remove(&unique_name);
 
         Ok(())
