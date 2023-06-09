@@ -2,6 +2,7 @@ use std::env::temp_dir;
 
 use anyhow::ensure;
 use busd::bus::Bus;
+use futures_util::stream::StreamExt;
 use ntest::timeout;
 use rand::{
     distributions::{Alphanumeric, DistString},
@@ -11,7 +12,7 @@ use tokio::{select, sync::oneshot::Sender};
 use tracing::instrument;
 use zbus::{
     fdo::{self, DBusProxy, ReleaseNameReply, RequestNameFlags, RequestNameReply},
-    names::WellKnownName,
+    names::{BusName, WellKnownName},
     AuthMechanism, CacheProperties, ConnectionBuilder,
 };
 
@@ -69,6 +70,8 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         .await?;
     let name: WellKnownName = "org.blah".try_into()?;
 
+    let mut name_changed_stream = dbus_proxy.receive_name_owner_changed().await?;
+    let mut name_acquired_stream = dbus_proxy.receive_name_acquired().await?;
     // This should work.
     let ret = dbus_proxy
         .request_name(name.clone(), RequestNameFlags::AllowReplacement.into())
@@ -76,6 +79,33 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
     ensure!(
         ret == RequestNameReply::PrimaryOwner,
         "expected to become primary owner"
+    );
+    // Ensure signals were emitted.
+    let changed = name_changed_stream.next().await.unwrap();
+    ensure!(
+        *changed.args()?.name() == name,
+        "expected name owner changed signal for our name"
+    );
+    ensure!(
+        changed.args()?.old_owner.is_none(),
+        "expected no old owner for our name"
+    );
+    ensure!(
+        changed.args()?.new_owner.as_ref().unwrap() == conn.unique_name().unwrap(),
+        "expected new owner to be us"
+    );
+    ensure!(
+        changed.header()?.destination()?.is_none(),
+        "expected no destination for our signal",
+    );
+    let acquired = name_acquired_stream.next().await.unwrap();
+    ensure!(
+        *acquired.args()?.name() == name,
+        "expected name acquired signal for our name"
+    );
+    ensure!(
+        *acquired.header()?.destination()?.unwrap() == BusName::from(conn.unique_name().unwrap()),
+        "expected name acquired signal to be unicasted to the acquiring connection",
     );
 
     // This shouldn't and we should be told we already own the name.
@@ -112,11 +142,49 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         "expected error"
     );
 
+    let mut name_acquired_stream = dbus_proxy2.receive_name_acquired().await?;
+    let mut name_lost_stream = dbus_proxy.receive_name_lost().await?;
     // Now the first client releases name.
     let ret = dbus_proxy.release_name(name.clone()).await?;
     ensure!(
         ret == ReleaseNameReply::Released,
         "expected name to be released"
+    );
+    // Ensure signals were emitted.
+    let changed = name_changed_stream.next().await.unwrap();
+    ensure!(
+        *changed.args()?.name() == name,
+        "expected name owner changed signal for our name"
+    );
+    ensure!(
+        changed.args()?.old_owner.as_ref().unwrap() == conn.unique_name().unwrap(),
+        "expected old owner to be our first connection"
+    );
+    ensure!(
+        changed.args()?.new_owner.as_ref().unwrap() == conn2.unique_name().unwrap(),
+        "expected new owner to be our second connection"
+    );
+    ensure!(
+        changed.header()?.destination()?.is_none(),
+        "expected no destination for our signal",
+    );
+    let lost = name_lost_stream.next().await.unwrap();
+    ensure!(
+        *lost.args()?.name() == name,
+        "expected name lost signal for our name"
+    );
+    ensure!(
+        *lost.header()?.destination()?.unwrap() == BusName::from(conn.unique_name().unwrap()),
+        "expected name lost signal to be unicasted to the loosing connection",
+    );
+    let acquired = name_acquired_stream.next().await.unwrap();
+    ensure!(
+        *acquired.args()?.name() == name,
+        "expected name acquired signal for our name"
+    );
+    ensure!(
+        *acquired.header()?.destination()?.unwrap() == BusName::from(conn2.unique_name().unwrap()),
+        "expected name acquired signal to be unicasted to the acquiring connection",
     );
 
     // Now the second client should be the primary owner.
