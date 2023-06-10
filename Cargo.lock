@@ -266,7 +266,6 @@ dependencies = [
  "hex",
  "nix 0.25.0",
  "ntest",
- "parking_lot",
  "rand",
  "serde",
  "tokio",
