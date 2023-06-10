@@ -1,11 +1,13 @@
 use std::{collections::HashSet, sync::Arc};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use futures_util::TryStreamExt;
 use tracing::trace;
 use zbus::{
     fdo,
     names::{BusName, OwnedUniqueName},
-    AuthMechanism, Connection, ConnectionBuilder, Guid, MessageStream, OwnedMatchRule, Socket,
+    AuthMechanism, Connection, ConnectionBuilder, Guid, MatchRule, MessageStream, OwnedMatchRule,
+    Socket,
 };
 
 use crate::{name_registry::NameRegistry, peers::Peers};
@@ -13,7 +15,6 @@ use crate::{name_registry::NameRegistry, peers::Peers};
 /// A peer connection.
 #[derive(Debug)]
 pub struct Peer {
-    greeted: bool,
     conn: Connection,
     unique_name: OwnedUniqueName,
     name_registry: NameRegistry,
@@ -41,13 +42,30 @@ impl Peer {
             .await?;
         trace!("created: {:?}", conn);
 
+        if unique_name != "org.freedesktop.DBus" {
+            // Handle the `Hello` method already.
+            let rule = MatchRule::builder()
+                .interface("org.freedesktop.DBus")?
+                .path("/org/freedesktop/DBus")?
+                .member("Hello")?
+                .build();
+            trace!("waiting for `Hello` method from {unique_name}..");
+            let msg = MessageStream::for_match_rule(rule, &conn, Some(1))
+                .await?
+                .try_next()
+                .await?
+                .ok_or_else(|| anyhow!("Hello method not received"))?;
+            trace!("`Hello` method received from {unique_name}..");
+            conn.reply(&msg, &unique_name).await?;
+            trace!("Replied to `Hello` method from {unique_name}..");
+        }
+
         let name_registry = peers.name_registry().await.clone();
         Ok(Self {
             conn,
             unique_name,
             name_registry,
             match_rules: HashSet::new(),
-            greeted: false,
         })
     }
 
@@ -135,17 +153,5 @@ impl Peer {
         }
 
         Ok(())
-    }
-
-    /// This is called the first time by each peer after connecting.
-    pub fn hello(&mut self) -> fdo::Result<OwnedUniqueName> {
-        if self.greeted {
-            return Err(fdo::Error::Failed(
-                "Can only call `Hello` method once".to_string(),
-            ));
-        }
-        self.greeted = true;
-
-        Ok(self.unique_name.clone())
     }
 }

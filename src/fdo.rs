@@ -44,9 +44,11 @@ impl DBus {
 
 #[dbus_interface(interface = "org.freedesktop.DBus")]
 impl DBus {
-    /// Returns the unique name assigned to the connection.
-    async fn hello(&mut self, #[zbus(header)] hdr: MessageHeader<'_>) -> Result<OwnedUniqueName> {
-        self.call_mut_on_peer(move |peer| peer.hello(), hdr).await
+    /// This is already called & handled and we only need to handle it once.
+    async fn hello(&self) -> Result<OwnedUniqueName> {
+        Err(Error::Failed(
+            "Can only call `Hello` method once".to_string(),
+        ))
     }
 
     /// Ask the message bus to assign the given name to the method caller.
