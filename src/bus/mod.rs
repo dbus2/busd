@@ -18,10 +18,16 @@ use crate::{
 /// The bus.
 #[derive(Debug)]
 pub struct Bus {
-    peers: Arc<Peers>,
+    inner: Inner,
     listener: Listener,
+}
+
+// All (cheaply) cloneable fields of `Bus` go here.
+#[derive(Clone, Debug)]
+pub struct Inner {
+    peers: Arc<Peers>,
     guid: Arc<Guid>,
-    next_id: Option<usize>,
+    next_id: usize,
     auth_mechanism: AuthMechanism,
 }
 
@@ -71,7 +77,7 @@ impl Bus {
         // Create a peer for ourselves.
         let (self_dial_conn, self_dial_peer) =
             SelfDialConn::connect(&mut bus, address.clone()).await?;
-        bus.peers.add(self_dial_peer).await;
+        bus.inner.peers.add(self_dial_peer).await;
         spawn(self_dial_conn.monitor_name_changes(name_changed_rx));
 
         Ok(bus)
@@ -79,10 +85,27 @@ impl Bus {
 
     pub async fn run(&mut self) -> Result<()> {
         loop {
-            match self.accept_next().await {
-                Ok(peer) => self.peers.add(peer).await,
-                Err(e) => warn!("Failed to establish connection: {}", e),
+            let socket = self.accept().await?;
+
+            if self.auth_mechanism() == AuthMechanism::Cookie {
+                cookies::sync().await?;
             }
+            let id = self.next_id();
+            let inner = self.inner.clone();
+            spawn(async move {
+                match Peer::new(
+                    &inner.guid,
+                    Some(id),
+                    socket,
+                    inner.auth_mechanism,
+                    inner.peers.clone(),
+                )
+                .await
+                {
+                    Ok(peer) => inner.peers.add(peer).await,
+                    Err(e) => warn!("Failed to establish connection: {}", e),
+                }
+            });
         }
     }
 
@@ -105,10 +128,12 @@ impl Bus {
         (
             Self {
                 listener,
-                peers: Arc::new(peers),
-                guid: Arc::new(Guid::generate()),
-                next_id: None,
-                auth_mechanism,
+                inner: Inner {
+                    peers: Arc::new(peers),
+                    guid: Arc::new(Guid::generate()),
+                    next_id: 0,
+                    auth_mechanism,
+                },
             },
             name_changed_rx,
         )
@@ -140,30 +165,7 @@ impl Bus {
         Ok(Self::new(listener, auth_mechanism))
     }
 
-    pub async fn accept_next(&mut self) -> Result<Peer> {
-        let socket = self.accept().await?;
-        if self.auth_mechanism == AuthMechanism::Cookie {
-            cookies::sync().await?;
-        }
-        Peer::new(
-            &self.guid,
-            self.next_id,
-            socket,
-            self.auth_mechanism,
-            self.peers.clone(),
-        )
-        .await
-        .map(|peer| {
-            match self.next_id.as_mut() {
-                Some(id) => *id += 1,
-                None => self.next_id = Some(0),
-            }
-
-            peer
-        })
-    }
-
-    async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
+    pub async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
         match &mut self.listener {
             #[cfg(unix)]
             Listener::Unix {
@@ -185,15 +187,21 @@ impl Bus {
     }
 
     pub fn peers(&self) -> &Arc<Peers> {
-        &self.peers
+        &self.inner.peers
     }
 
     pub fn guid(&self) -> &Arc<Guid> {
-        &self.guid
+        &self.inner.guid
     }
 
     pub fn auth_mechanism(&self) -> AuthMechanism {
-        self.auth_mechanism
+        self.inner.auth_mechanism
+    }
+
+    fn next_id(&mut self) -> usize {
+        self.inner.next_id += 1;
+
+        self.inner.next_id
     }
 }
 

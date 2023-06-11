@@ -23,8 +23,20 @@ impl SelfDialConn {
             .unique_name("org.freedesktop.DBus")?
             .build()
             .map_err(Into::into);
+        let peer_setup_fut = async {
+            let socket = bus.accept().await?;
 
-        let (conn, self_dial_peer) = try_join!(conn_builder_fut, bus.accept_next())?;
+            Peer::new(
+                bus.guid(),
+                None,
+                socket,
+                bus.auth_mechanism(),
+                bus.peers().clone(),
+            )
+            .await
+        };
+
+        let (conn, self_dial_peer) = try_join!(conn_builder_fut, peer_setup_fut)?;
         trace!("Self-dial connection created.");
 
         Ok((Self { conn }, self_dial_peer))
