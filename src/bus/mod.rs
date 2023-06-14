@@ -87,9 +87,6 @@ impl Bus {
         loop {
             let socket = self.accept().await?;
 
-            if self.auth_mechanism() == AuthMechanism::Cookie {
-                cookies::sync().await?;
-            }
             let id = self.next_id();
             let inner = self.inner.clone();
             spawn(async move {
@@ -166,6 +163,9 @@ impl Bus {
     }
 
     pub async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
+        if self.auth_mechanism() == AuthMechanism::Cookie {
+            cookies::sync().await?;
+        }
         match &mut self.listener {
             #[cfg(unix)]
             Listener::Unix {
