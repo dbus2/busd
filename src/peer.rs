@@ -10,7 +10,7 @@ use zbus::{
     Socket,
 };
 
-use crate::{name_registry::NameRegistry, peers::Peers};
+use crate::{name_registry::NameRegistry, peer_stream::PeerStream, peers::Peers};
 
 /// A peer connection.
 #[derive(Debug)]
@@ -77,8 +77,8 @@ impl Peer {
         &self.conn
     }
 
-    pub fn stream(&self) -> MessageStream {
-        MessageStream::from(&self.conn)
+    pub fn stream(&self) -> PeerStream {
+        PeerStream::for_peer(self)
     }
 
     /// # Panics
