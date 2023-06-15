@@ -7,13 +7,11 @@ use std::{
     path::{Path, PathBuf},
 };
 use std::{str::FromStr, sync::Arc};
-use tokio::{fs::remove_file, spawn, sync::mpsc::Receiver};
+use tokio::{fs::remove_file, spawn};
 use tracing::{debug, info, warn};
 use zbus::{Address, AuthMechanism, Guid, Socket, TcpAddress};
 
-use crate::{
-    name_registry::NameOwnerChanged, peer::Peer, peers::Peers, self_dial_conn::SelfDialConn,
-};
+use crate::{peer::Peer, peers::Peers};
 
 /// The bus.
 #[derive(Debug)]
@@ -50,7 +48,7 @@ impl Bus {
             None => default_address(),
         };
         let address = Address::from_str(&address)?;
-        let (mut bus, name_changed_rx) = match &address {
+        match &address {
             #[cfg(unix)]
             Address::Unix(path) => {
                 let path = Path::new(&path);
@@ -72,15 +70,7 @@ impl Bus {
                 Err(anyhow!("`autolaunch` transport is not supported (yet)."))?
             }
             _ => Err(anyhow!("Unsupported address `{}`.", address))?,
-        }?;
-
-        // Create a peer for ourselves.
-        let (self_dial_conn, self_dial_peer) =
-            SelfDialConn::connect(&mut bus, address.clone()).await?;
-        bus.inner.peers.add(self_dial_peer).await;
-        spawn(self_dial_conn.monitor_name_changes(name_changed_rx));
-
-        Ok(bus)
+        }
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -91,8 +81,8 @@ impl Bus {
             let inner = self.inner.clone();
             spawn(async move {
                 match Peer::new(
-                    &inner.guid,
-                    Some(id),
+                    inner.guid.clone(),
+                    id,
                     socket,
                     inner.auth_mechanism,
                     inner.peers.clone(),
@@ -117,30 +107,20 @@ impl Bus {
         }
     }
 
-    fn new(
-        listener: Listener,
-        auth_mechanism: AuthMechanism,
-    ) -> (Self, Receiver<NameOwnerChanged>) {
-        let (peers, name_changed_rx) = Peers::new();
-        (
-            Self {
-                listener,
-                inner: Inner {
-                    peers: Arc::new(peers),
-                    guid: Arc::new(Guid::generate()),
-                    next_id: 0,
-                    auth_mechanism,
-                },
+    fn new(listener: Listener, auth_mechanism: AuthMechanism) -> Self {
+        Self {
+            listener,
+            inner: Inner {
+                peers: Peers::new(),
+                guid: Arc::new(Guid::generate()),
+                next_id: 0,
+                auth_mechanism,
             },
-            name_changed_rx,
-        )
+        }
     }
 
     #[cfg(unix)]
-    async fn unix_stream(
-        socket_path: &Path,
-        auth_mechanism: AuthMechanism,
-    ) -> Result<(Self, Receiver<NameOwnerChanged>)> {
+    async fn unix_stream(socket_path: &Path, auth_mechanism: AuthMechanism) -> Result<Self> {
         let socket_path = socket_path.to_path_buf();
         let listener = Listener::Unix {
             listener: tokio::net::UnixListener::bind(&socket_path)?,
@@ -150,10 +130,7 @@ impl Bus {
         Ok(Self::new(listener, auth_mechanism))
     }
 
-    async fn tcp_stream(
-        address: &TcpAddress,
-        auth_mechanism: AuthMechanism,
-    ) -> Result<(Self, Receiver<NameOwnerChanged>)> {
+    async fn tcp_stream(address: &TcpAddress, auth_mechanism: AuthMechanism) -> Result<Self> {
         let address = (address.host(), address.port());
         let listener = Listener::Tcp {
             listener: tokio::net::TcpListener::bind(address).await?,

@@ -1,16 +1,14 @@
 use std::{collections::HashSet, sync::Arc};
 
-use anyhow::{anyhow, Result};
-use futures_util::TryStreamExt;
+use anyhow::Result;
 use tracing::trace;
 use zbus::{
     fdo,
     names::{BusName, OwnedUniqueName},
-    AuthMechanism, Connection, ConnectionBuilder, Guid, MatchRule, MessageStream, OwnedMatchRule,
-    Socket,
+    AuthMechanism, Connection, ConnectionBuilder, Guid, OwnedMatchRule, Socket,
 };
 
-use crate::{name_registry::NameRegistry, peer_stream::PeerStream, peers::Peers};
+use crate::{fdo::DBus, name_registry::NameRegistry, peer_stream::PeerStream, peers::Peers};
 
 /// A peer connection.
 #[derive(Debug)]
@@ -23,44 +21,27 @@ pub struct Peer {
 
 impl Peer {
     pub async fn new(
-        guid: &Guid,
-        id: Option<usize>,
+        guid: Arc<Guid>,
+        id: usize,
         socket: Box<dyn Socket + 'static>,
         auth_mechanism: AuthMechanism,
         peers: Arc<Peers>,
     ) -> Result<Self> {
-        let unique_name = match id {
-            Some(id) => OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap(),
-            None => OwnedUniqueName::try_from("org.freedesktop.DBus").unwrap(),
-        };
-
+        let unique_name = OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap();
+        let dbus = DBus::new(unique_name.clone(), peers.clone(), guid.clone());
         let conn = ConnectionBuilder::socket(socket)
-            .server(guid)
+            .server(&guid)
             .p2p()
             .auth_mechanisms(&[auth_mechanism])
+            .unique_name("org.freedesktop.DBus")?
+            .name("org.freedesktop.DBus")?
+            .serve_at("/org/freedesktop/DBus", dbus)?
             .build()
             .await?;
         trace!("created: {:?}", conn);
 
-        if unique_name != "org.freedesktop.DBus" {
-            // Handle the `Hello` method already.
-            let rule = MatchRule::builder()
-                .interface("org.freedesktop.DBus")?
-                .path("/org/freedesktop/DBus")?
-                .member("Hello")?
-                .build();
-            trace!("waiting for `Hello` method from {unique_name}..");
-            let msg = MessageStream::for_match_rule(rule, &conn, Some(1))
-                .await?
-                .try_next()
-                .await?
-                .ok_or_else(|| anyhow!("Hello method not received"))?;
-            trace!("`Hello` method received from {unique_name}..");
-            conn.reply(&msg, &unique_name).await?;
-            trace!("Replied to `Hello` method from {unique_name}..");
-        }
-
         let name_registry = peers.name_registry().await.clone();
+
         Ok(Self {
             conn,
             unique_name,

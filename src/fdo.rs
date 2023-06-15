@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Weak},
+};
 
 use enumflags2::BitFlags;
 use zbus::{
@@ -11,44 +14,64 @@ use zbus::{
         WellKnownName,
     },
     zvariant::Optional,
-    Guid, MessageHeader, OwnedMatchRule, SignalContext,
+    Guid, OwnedMatchRule, SignalContext,
 };
 
 use crate::{peer::Peer, peers::Peers};
 
 #[derive(Debug)]
 pub(super) struct DBus {
-    peers: Arc<Peers>,
+    unique_name: OwnedUniqueName,
+    peers: Weak<Peers>,
     guid: Arc<Guid>,
+    greeted: bool,
 }
 
 impl DBus {
-    pub(super) fn new(peers: Arc<Peers>, guid: Arc<Guid>) -> Self {
-        Self { peers, guid }
+    pub(super) fn new(unique_name: OwnedUniqueName, peers: Arc<Peers>, guid: Arc<Guid>) -> Self {
+        Self {
+            unique_name,
+            peers: Arc::downgrade(&peers),
+            guid,
+            greeted: false,
+        }
     }
 
     /// Helper for D-Bus methods that call a function on a peer.
-    async fn call_mut_on_peer<F, R>(&mut self, func: F, hdr: MessageHeader<'_>) -> Result<R>
+    async fn call_mut_on_peer<F, R>(&mut self, func: F) -> Result<R>
     where
         F: FnOnce(&mut Peer) -> Result<R>,
     {
-        let name = msg_sender(&hdr);
-        let mut peers = self.peers.peers_mut().await;
+        let name = &self.unique_name;
+        let peers = self.peers()?;
+        let mut peers = peers.peers_mut().await;
         let peer = peers
-            .get_mut(name.as_str())
+            .get_mut(&*name)
             .ok_or_else(|| Error::NameHasNoOwner(format!("No such peer: {}", name)))?;
 
         func(peer)
+    }
+
+    fn peers(&self) -> Result<Arc<Peers>> {
+        self.peers
+            .upgrade()
+            // Can it happen in any other situation than the bus shutting down?
+            .ok_or_else(|| Error::Failed("Bus shutting down.".to_string()))
     }
 }
 
 #[dbus_interface(interface = "org.freedesktop.DBus")]
 impl DBus {
     /// This is already called & handled and we only need to handle it once.
-    async fn hello(&self) -> Result<OwnedUniqueName> {
-        Err(Error::Failed(
-            "Can only call `Hello` method once".to_string(),
-        ))
+    async fn hello(&mut self) -> Result<OwnedUniqueName> {
+        if self.greeted {
+            Err(Error::Failed(
+                "Can only call `Hello` method once".to_string(),
+            ))
+        } else {
+            self.greeted = true;
+            Ok(self.unique_name.clone())
+        }
     }
 
     /// Ask the message bus to assign the given name to the method caller.
@@ -56,11 +79,10 @@ impl DBus {
         &self,
         name: OwnedWellKnownName,
         flags: BitFlags<RequestNameFlags>,
-        #[zbus(header)] hdr: MessageHeader<'_>,
     ) -> Result<RequestNameReply> {
-        let unique_name = msg_sender(&hdr);
+        let unique_name = &self.unique_name;
         Ok(self
-            .peers
+            .peers()?
             .name_registry_mut()
             .await
             .request_name(name, unique_name.clone().into(), flags)
@@ -68,14 +90,10 @@ impl DBus {
     }
 
     /// Ask the message bus to release the method caller's claim to the given name.
-    async fn release_name(
-        &self,
-        name: OwnedWellKnownName,
-        #[zbus(header)] hdr: MessageHeader<'_>,
-    ) -> Result<ReleaseNameReply> {
-        let unique_name = msg_sender(&hdr);
+    async fn release_name(&self, name: OwnedWellKnownName) -> Result<ReleaseNameReply> {
+        let unique_name = &self.unique_name;
         Ok(self
-            .peers
+            .peers()?
             .name_registry_mut()
             .await
             .release_name(name, unique_name.clone().into())
@@ -84,8 +102,11 @@ impl DBus {
 
     /// Returns the unique connection name of the primary owner of the name given.
     async fn get_name_owner(&self, name: BusName<'_>) -> Result<OwnedUniqueName> {
-        let peers = &self.peers;
+        if name == "org.freedesktop.DBus" {
+            return Ok(self.unique_name.clone());
+        }
 
+        let peers = self.peers()?;
         match name {
             BusName::WellKnown(name) => peers.name_registry().await.lookup(name).ok_or_else(|| {
                 Error::NameHasNoOwner("Name is not owned by anyone. Take it!".to_string())
@@ -103,29 +124,18 @@ impl DBus {
     }
 
     /// Adds a match rule to match messages going through the message bus
-    async fn add_match(
-        &mut self,
-        rule: OwnedMatchRule,
-        #[zbus(header)] hdr: MessageHeader<'_>,
-    ) -> Result<()> {
-        self.call_mut_on_peer(
-            move |peer| {
-                peer.add_match_rule(rule);
+    async fn add_match(&mut self, rule: OwnedMatchRule) -> Result<()> {
+        self.call_mut_on_peer(move |peer| {
+            peer.add_match_rule(rule);
 
-                Ok(())
-            },
-            hdr,
-        )
+            Ok(())
+        })
         .await
     }
 
     /// Removes the first rule that matches.
-    async fn remove_match(
-        &mut self,
-        rule: OwnedMatchRule,
-        #[zbus(header)] hdr: MessageHeader<'_>,
-    ) -> Result<()> {
-        self.call_mut_on_peer(move |peer| peer.remove_match_rule(rule), hdr)
+    async fn remove_match(&mut self, rule: OwnedMatchRule) -> Result<()> {
+        self.call_mut_on_peer(move |peer| peer.remove_match_rule(rule))
             .await
     }
 
@@ -139,8 +149,16 @@ impl DBus {
         &self,
         bus_name: BusName<'_>,
     ) -> Result<ConnectionCredentials> {
+        if bus_name == "org.freedesktop.DBus" {
+            // TODO: We need to implement this for bus too.
+            return Err(Error::Failed(
+                "Not yet implemented for bus itself".to_string(),
+            ));
+        }
+
         let owner = self.get_name_owner(bus_name.clone()).await?;
-        let peers = self.peers.peers().await;
+        let peers = self.peers()?;
+        let peers = peers.peers().await;
         let peer = peers
             .get(&owner)
             .ok_or_else(|| Error::Failed(format!("Peer `{}` not found", bus_name)))?;
@@ -205,15 +223,18 @@ impl DBus {
     }
 
     /// Returns a list of all currently-owned names on the bus.
-    async fn list_names(&self) -> Vec<OwnedBusName> {
-        let peers = &self.peers;
-        let mut names: Vec<_> = peers
-            .peers()
-            .await
-            .keys()
-            .cloned()
-            .map(|n| BusName::Unique(n.into()).into())
-            .collect();
+    async fn list_names(&self) -> Result<Vec<OwnedBusName>> {
+        let peers = self.peers()?;
+        let mut names = vec!["org.freedesktop.DBus".try_into().unwrap()];
+        names.extend(
+            peers
+                .peers()
+                .await
+                .keys()
+                .cloned()
+                .map(|n| BusName::Unique(n.into()).into()),
+        );
+
         names.extend(
             peers
                 .name_registry()
@@ -223,12 +244,12 @@ impl DBus {
                 .map(|n| BusName::WellKnown(n.into()).into()),
         );
 
-        names
+        Ok(names)
     }
 
     /// List the connections currently queued for a bus name.
     async fn list_queued_owners(&self, name: WellKnownName<'_>) -> Result<Vec<OwnedUniqueName>> {
-        self.peers
+        self.peers()?
             .name_registry()
             .await
             .waiting_list(name)
@@ -321,13 +342,4 @@ impl DBus {
         signal_ctxt: &SignalContext<'_>,
         name: BusName<'_>,
     ) -> zbus::Result<()>;
-}
-
-/// Helper for getting the peer name from a message header.
-fn msg_sender<'h>(hdr: &'h MessageHeader<'h>) -> &'h UniqueName<'h> {
-    // SAFETY: The bus (that's us!) is supposed to ensure a valid sender on the message.
-    hdr.sender()
-        .ok()
-        .flatten()
-        .expect("Missing `sender` header")
 }

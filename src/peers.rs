@@ -5,14 +5,18 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use tokio::sync::{
-    mpsc::{Receiver, Sender},
-    RwLock,
+use tokio::{
+    spawn,
+    sync::{
+        mpsc::{Receiver, Sender},
+        RwLock,
+    },
 };
 use tracing::{debug, trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
-    MessageField, MessageFieldCode, MessageType,
+    zvariant::Optional,
+    MessageBuilder, MessageField, MessageFieldCode, MessageType,
 };
 
 use crate::{
@@ -29,16 +33,16 @@ pub struct Peers {
 }
 
 impl Peers {
-    pub fn new() -> (Self, Receiver<NameOwnerChanged>) {
+    pub fn new() -> Arc<Self> {
         let (name_registry, name_changed_rx) = NameRegistry::new();
-        (
-            Self {
-                peers: RwLock::new(BTreeMap::new()),
-                name_changed_tx: name_registry.name_changed_tx().clone(),
-                name_registry: RwLock::new(name_registry),
-            },
-            name_changed_rx,
-        )
+        let peers = Arc::new(Self {
+            peers: RwLock::new(BTreeMap::new()),
+            name_changed_tx: name_registry.name_changed_tx().clone(),
+            name_registry: RwLock::new(name_registry),
+        });
+        spawn(peers.clone().monitor_name_changes(name_changed_rx));
+
+        peers
     }
 
     pub async fn add(self: &Arc<Self>, peer: Peer) {
@@ -190,5 +194,63 @@ impl Peers {
                 warn!("Error sending message: {}", e);
             }
         }
+    }
+
+    async fn monitor_name_changes(
+        self: Arc<Self>,
+        mut name_changed_rx: Receiver<NameOwnerChanged>,
+    ) -> Result<()> {
+        while let Some(name_changed) = name_changed_rx.recv().await {
+            trace!("Name changed: {:?}", name_changed);
+            // First broadcast the name change signal.
+            let msg = MessageBuilder::signal(
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus",
+                "NameOwnerChanged",
+            )
+            .unwrap()
+            .sender("org.freedesktop.DBus")
+            .unwrap()
+            .build(&(
+                name_changed.name.clone(),
+                Optional::from(name_changed.old_owner.clone()),
+                Optional::from(name_changed.new_owner.clone()),
+            ))?;
+            self.broadcast_msg(Arc::new(msg)).await;
+
+            // Now unicast the appropriate signal to the old and new owners.
+            if let Some(old_owner) = name_changed.old_owner {
+                let msg = MessageBuilder::signal(
+                    "/org/freedesktop/DBus",
+                    "org.freedesktop.DBus",
+                    "NameLost",
+                )
+                .unwrap()
+                .sender("org.freedesktop.DBus")
+                .unwrap()
+                .destination(&old_owner)
+                .unwrap()
+                .build(&name_changed.name)?;
+                self.send_msg_to_unique_name(Arc::new(msg), old_owner.into())
+                    .await?;
+            }
+            if let Some(new_owner) = name_changed.new_owner {
+                let msg = MessageBuilder::signal(
+                    "/org/freedesktop/DBus",
+                    "org.freedesktop.DBus",
+                    "NameAcquired",
+                )
+                .unwrap()
+                .sender("org.freedesktop.DBus")
+                .unwrap()
+                .destination(&new_owner)
+                .unwrap()
+                .build(&name_changed.name)?;
+                self.send_msg_to_unique_name(Arc::new(msg), new_owner.into())
+                    .await?;
+            }
+        }
+
+        Ok(())
     }
 }
