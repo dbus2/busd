@@ -23,6 +23,17 @@ jobs:
           toolchain: stable
       - name: Run tests on stable Rust
         run: cargo test
+
+  test_nightly:
+    env:
+      RUST_LOG: "trace"
+      RUST_BACKTRACE: "full"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, "windows-latest"]
+    steps:
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
