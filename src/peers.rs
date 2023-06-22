@@ -224,6 +224,7 @@ impl Peers {
         let name_registry = self.name_registry().await;
         for peer in self.peers.read().await.values() {
             if !peer.interested(&msg, &name_registry).await {
+                trace!("Peer {} not interested in {msg:?}", peer.unique_name());
                 continue;
             }
 
