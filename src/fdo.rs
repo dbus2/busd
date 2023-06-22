@@ -4,6 +4,9 @@ use std::{
 };
 
 use enumflags2::BitFlags;
+use serde::Serialize;
+use tokio::{spawn, sync::oneshot};
+use tracing::{debug, warn};
 use zbus::{
     dbus_interface,
     fdo::{
@@ -13,11 +16,11 @@ use zbus::{
         BusName, OwnedBusName, OwnedInterfaceName, OwnedUniqueName, OwnedWellKnownName, UniqueName,
         WellKnownName,
     },
-    zvariant::Optional,
+    zvariant::{Optional, Signature, Type},
     Guid, OwnedMatchRule, SignalContext,
 };
 
-use crate::{peer::Peer, peers::Peers};
+use crate::{name_registry::NameOwnerChanged, peer::Peer, peers::Peers};
 
 #[derive(Debug)]
 pub(super) struct DBus {
@@ -63,14 +66,42 @@ impl DBus {
 #[dbus_interface(interface = "org.freedesktop.DBus")]
 impl DBus {
     /// This is already called & handled and we only need to handle it once.
-    async fn hello(&mut self) -> Result<OwnedUniqueName> {
+    async fn hello(&mut self) -> Result<HelloResponse> {
         if self.greeted {
             Err(Error::Failed(
                 "Can only call `Hello` method once".to_string(),
             ))
         } else {
             self.greeted = true;
-            Ok(self.unique_name.clone())
+
+            // Notify name change in a separate task because we want:
+            // 1. `Hello` to return ASAP and hence client connection to be esablished.
+            // 2. The `Hello` response to arrive before the `NameAcquired` signal.
+            let peers = self.peers()?;
+            let unique_name = self.unique_name.clone();
+            let (tx, rx) = oneshot::channel();
+            let response = HelloResponse {
+                name: unique_name.clone(),
+                tx: Some(tx),
+            };
+            spawn(async move {
+                if let Err(e) = rx.await {
+                    warn!("Failed to wait for `Hello` response: {e}");
+
+                    return;
+                }
+
+                let changed = NameOwnerChanged {
+                    name: BusName::from(unique_name.clone()).into(),
+                    old_owner: None,
+                    new_owner: Some(unique_name.clone()),
+                };
+                if let Err(e) = peers.notify_name_changes(changed).await {
+                    warn!("Failed to notify peers of name change: {}", e);
+                }
+            });
+
+            Ok(response)
         }
     }
 
@@ -81,23 +112,39 @@ impl DBus {
         flags: BitFlags<RequestNameFlags>,
     ) -> Result<RequestNameReply> {
         let unique_name = &self.unique_name;
-        Ok(self
-            .peers()?
+        let peers = self.peers()?;
+        let (reply, name_owner_changed) = peers
             .name_registry_mut()
             .await
-            .request_name(name, unique_name.clone().into(), flags)
-            .await)
+            .request_name(name, unique_name.clone(), flags)
+            .await;
+        if let Some(changed) = name_owner_changed {
+            peers
+                .notify_name_changes(changed)
+                .await
+                .map_err(|e| Error::Failed(e.to_string()))?;
+        }
+
+        Ok(reply)
     }
 
     /// Ask the message bus to release the method caller's claim to the given name.
     async fn release_name(&self, name: OwnedWellKnownName) -> Result<ReleaseNameReply> {
         let unique_name = &self.unique_name;
-        Ok(self
-            .peers()?
+        let peers = self.peers()?;
+        let (reply, name_owner_changed) = peers
             .name_registry_mut()
             .await
-            .release_name(name, unique_name.clone().into())
-            .await)
+            .release_name(name, unique_name.clone())
+            .await;
+        if let Some(changed) = name_owner_changed {
+            peers
+                .notify_name_changes(changed)
+                .await
+                .map_err(|e| Error::Failed(e.to_string()))?;
+        }
+
+        Ok(reply)
     }
 
     /// Returns the unique connection name of the primary owner of the name given.
@@ -342,4 +389,40 @@ impl DBus {
         signal_ctxt: &SignalContext<'_>,
         name: BusName<'_>,
     ) -> zbus::Result<()>;
+}
+
+/// Custom type for `Hello` method response.
+///
+/// We need to ensure that the `NameAcquired` signal is not sent out before the response so we
+/// return this from the method and when zbus is done sending it, it will drop it and we can then
+/// send the signal.
+#[derive(Debug)]
+struct HelloResponse {
+    name: OwnedUniqueName,
+    tx: Option<oneshot::Sender<()>>,
+}
+
+impl Serialize for HelloResponse {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.name.serialize(serializer)
+    }
+}
+
+impl Type for HelloResponse {
+    fn signature() -> Signature<'static> {
+        UniqueName::signature()
+    }
+}
+
+impl Drop for HelloResponse {
+    fn drop(&mut self) {
+        if let Some(tx) = self.tx.take() {
+            if let Err(e) = tx.send(()) {
+                debug!("{e:?}");
+            }
+        }
+    }
 }

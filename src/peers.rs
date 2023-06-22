@@ -5,22 +5,17 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use tokio::{
-    spawn,
-    sync::{
-        mpsc::{Receiver, Sender},
-        RwLock,
-    },
-};
+use tokio::sync::RwLock;
 use tracing::{debug, trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
     zvariant::Optional,
     AuthMechanism, Guid, MessageBuilder, MessageField, MessageFieldCode, MessageType,
-    Socket,
+    SignalContext, Socket,
 };
 
 use crate::{
+    fdo::DBus,
     name_registry::{NameOwnerChanged, NameRegistry},
     peer::Peer,
     peer_stream::PeerStream,
@@ -30,20 +25,16 @@ use crate::{
 pub struct Peers {
     peers: RwLock<BTreeMap<OwnedUniqueName, Peer>>,
     name_registry: RwLock<NameRegistry>,
-    name_changed_tx: Sender<NameOwnerChanged>,
 }
 
 impl Peers {
     pub fn new() -> Arc<Self> {
-        let (name_registry, name_changed_rx) = NameRegistry::new();
-        let peers = Arc::new(Self {
-            peers: RwLock::new(BTreeMap::new()),
-            name_changed_tx: name_registry.name_changed_tx().clone(),
-            name_registry: RwLock::new(name_registry),
-        });
-        spawn(peers.clone().monitor_name_changes(name_changed_rx));
+        let name_registry = NameRegistry::default();
 
-        peers
+        Arc::new(Self {
+            peers: RwLock::new(BTreeMap::new()),
+            name_registry: RwLock::new(name_registry),
+        })
     }
 
     pub async fn add(
@@ -56,7 +47,6 @@ impl Peers {
         let mut peers = self.peers_mut().await;
         let peer = Peer::new(guid.clone(), id, socket, auth_mechanism, self.clone()).await?;
         let unique_name = peer.unique_name().clone();
-        let mut peers = self.peers.write().await;
         match peers.get(&unique_name) {
             Some(peer) => panic!(
                 "Unique name `{}` re-used. We're in deep trouble if this happens",
@@ -66,18 +56,6 @@ impl Peers {
                 let peer_stream = peer.stream();
                 tokio::spawn(self.clone().serve_peer(peer_stream, unique_name.clone()));
                 peers.insert(unique_name.clone(), peer);
-                drop(peers);
-                if let Err(e) = self
-                    .name_changed_tx
-                    .send(NameOwnerChanged {
-                        name: BusName::from(unique_name.to_owned()).into(),
-                        old_owner: None,
-                        new_owner: Some(unique_name),
-                    })
-                    .await
-                {
-                    debug!("failed to send NameOwnerChanged: {e}");
-                }
             }
         }
 
@@ -98,6 +76,59 @@ impl Peers {
 
     pub async fn name_registry_mut(&self) -> impl DerefMut<Target = NameRegistry> + '_ {
         self.name_registry.write().await
+    }
+
+    pub async fn notify_name_changes(&self, name_owner_changed: NameOwnerChanged) -> Result<()> {
+        let name = BusName::from(name_owner_changed.name);
+        let old_owner = name_owner_changed.old_owner.map(UniqueName::from);
+        let new_owner = name_owner_changed.new_owner.map(UniqueName::from);
+
+        // First broadcast the name change signal.
+        let msg = MessageBuilder::signal(
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "NameOwnerChanged",
+        )
+        .unwrap()
+        .sender("org.freedesktop.DBus")
+        .unwrap()
+        .build(&(
+            &name,
+            Optional::from(old_owner.clone()),
+            Optional::from(new_owner.clone()),
+        ))?;
+        self.broadcast_msg(Arc::new(msg)).await;
+
+        // Now unicast the appropriate signal to the old and new owners.
+        let peers = self.peers().await;
+        if let Some(old_owner) = old_owner {
+            match peers.get(&*old_owner) {
+                Some(peer) => {
+                    let signal_ctxt = SignalContext::new(peer.conn(), "/org/freedesktop/DBus")
+                        .unwrap()
+                        .set_destination(old_owner.into());
+                    DBus::name_lost(&signal_ctxt, name.clone()).await?;
+                }
+                None => {
+                    warn!("Couldn't notify inexistant peer {old_owner} about loosing name {name}")
+                }
+            }
+        }
+        if let Some(new_owner) = new_owner {
+            match peers.get(&*new_owner) {
+                Some(peer) => {
+                    let signal_ctxt = SignalContext::new(peer.conn(), "/org/freedesktop/DBus")
+                        .unwrap()
+                        .set_destination(new_owner.into());
+                    DBus::name_acquired(&signal_ctxt, name.clone()).await?;
+                }
+                None => {
+                    warn!("Couldn't notify inexistant peer {new_owner} about acquiring name {name}")
+                }
+            }
+        }
+
+        Ok(())
     }
 
     async fn serve_peer(
@@ -130,22 +161,21 @@ impl Peers {
         }
 
         // Stream is done means the peer disconnected. Remove it from the list of peers.
-        self.name_registry_mut()
+        self.peers_mut().await.remove(&unique_name);
+        let names_changes = self
+            .name_registry_mut()
             .await
             .release_all(unique_name.clone())
             .await;
-        if let Err(e) = self
-            .name_changed_tx
-            .send(NameOwnerChanged {
-                name: BusName::from(unique_name.clone()).into(),
-                old_owner: Some(unique_name.clone()),
-                new_owner: None,
-            })
-            .await
-        {
-            debug!("failed to send NameOwnerChanged: {e}");
+        for changed in names_changes {
+            self.notify_name_changes(changed).await?;
         }
-        self.peers_mut().await.remove(&unique_name);
+        self.notify_name_changes(NameOwnerChanged {
+            name: BusName::from(unique_name.clone()).into(),
+            old_owner: Some(unique_name.clone()),
+            new_owner: None,
+        })
+        .await?;
 
         Ok(())
     }
@@ -206,63 +236,5 @@ impl Peers {
                 warn!("Error sending message: {}", e);
             }
         }
-    }
-
-    async fn monitor_name_changes(
-        self: Arc<Self>,
-        mut name_changed_rx: Receiver<NameOwnerChanged>,
-    ) -> Result<()> {
-        while let Some(name_changed) = name_changed_rx.recv().await {
-            trace!("Name changed: {:?}", name_changed);
-            // First broadcast the name change signal.
-            let msg = MessageBuilder::signal(
-                "/org/freedesktop/DBus",
-                "org.freedesktop.DBus",
-                "NameOwnerChanged",
-            )
-            .unwrap()
-            .sender("org.freedesktop.DBus")
-            .unwrap()
-            .build(&(
-                name_changed.name.clone(),
-                Optional::from(name_changed.old_owner.clone()),
-                Optional::from(name_changed.new_owner.clone()),
-            ))?;
-            self.broadcast_msg(Arc::new(msg)).await;
-
-            // Now unicast the appropriate signal to the old and new owners.
-            if let Some(old_owner) = name_changed.old_owner {
-                let msg = MessageBuilder::signal(
-                    "/org/freedesktop/DBus",
-                    "org.freedesktop.DBus",
-                    "NameLost",
-                )
-                .unwrap()
-                .sender("org.freedesktop.DBus")
-                .unwrap()
-                .destination(&old_owner)
-                .unwrap()
-                .build(&name_changed.name)?;
-                self.send_msg_to_unique_name(Arc::new(msg), old_owner.into())
-                    .await?;
-            }
-            if let Some(new_owner) = name_changed.new_owner {
-                let msg = MessageBuilder::signal(
-                    "/org/freedesktop/DBus",
-                    "org.freedesktop.DBus",
-                    "NameAcquired",
-                )
-                .unwrap()
-                .sender("org.freedesktop.DBus")
-                .unwrap()
-                .destination(&new_owner)
-                .unwrap()
-                .build(&name_changed.name)?;
-                self.send_msg_to_unique_name(Arc::new(msg), new_owner.into())
-                    .await?;
-            }
-        }
-
-        Ok(())
     }
 }
