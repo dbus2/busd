@@ -15,7 +15,6 @@ use crate::{fdo::DBus, name_registry::NameRegistry, peer_stream::PeerStream, pee
 pub struct Peer {
     conn: Connection,
     unique_name: OwnedUniqueName,
-    name_registry: NameRegistry,
     match_rules: HashSet<OwnedMatchRule>,
 }
 
@@ -40,12 +39,9 @@ impl Peer {
             .await?;
         trace!("created: {:?}", conn);
 
-        let name_registry = peers.name_registry().await.clone();
-
         Ok(Self {
             conn,
             unique_name,
-            name_registry,
             match_rules: HashSet::new(),
         })
     }
@@ -65,7 +61,7 @@ impl Peer {
     /// # Panics
     ///
     /// if header, SENDER or DESTINATION is not set.
-    pub async fn interested(&self, msg: &zbus::Message) -> bool {
+    pub async fn interested(&self, msg: &zbus::Message, name_registry: &NameRegistry) -> bool {
         let hdr = msg.header().expect("received message without header");
 
         let ret = self.match_rules.iter().any(|rule| {
@@ -82,7 +78,7 @@ impl Peer {
 
             // Then match sender and destination involving well-known names, manually.
             if let Some(sender) = rule.sender().cloned().and_then(|name| match name {
-                BusName::WellKnown(name) => self.name_registry.lookup(name).as_deref().cloned(),
+                BusName::WellKnown(name) => name_registry.lookup(name).as_deref().cloned(),
                 // Unique name is already taken care of by the zbus API.
                 BusName::Unique(_) => None,
             }) {
@@ -105,7 +101,7 @@ impl Peer {
                     .expect("DESTINATION field unset")
                     .clone()
                 {
-                    BusName::WellKnown(name) => match self.name_registry.lookup(name) {
+                    BusName::WellKnown(name) => match name_registry.lookup(name) {
                         Some(name) if name == *destination => (),
                         Some(_) => return false,
                         None => return false,

@@ -180,8 +180,9 @@ impl Peers {
 
     async fn broadcast_msg(&self, msg: Arc<zbus::Message>) {
         trace!("Braadcasting message: {:?}", msg);
+        let name_registry = self.name_registry().await;
         for peer in self.peers.read().await.values() {
-            if !peer.interested(&msg).await {
+            if !peer.interested(&msg, &name_registry).await {
                 continue;
             }
 
