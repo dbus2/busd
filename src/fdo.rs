@@ -46,7 +46,7 @@ impl DBus {
         let peers = self.peers()?;
         let mut peers = peers.peers_mut().await;
         let peer = peers
-            .get_mut(&*name)
+            .get_mut(name)
             .ok_or_else(|| Error::NameHasNoOwner(format!("No such peer: {}", name)))?;
 
         func(peer)
