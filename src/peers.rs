@@ -16,7 +16,8 @@ use tracing::{debug, trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
     zvariant::Optional,
-    MessageBuilder, MessageField, MessageFieldCode, MessageType,
+    AuthMechanism, Guid, MessageBuilder, MessageField, MessageFieldCode, MessageType,
+    Socket,
 };
 
 use crate::{
@@ -45,7 +46,15 @@ impl Peers {
         peers
     }
 
-    pub async fn add(self: &Arc<Self>, peer: Peer) {
+    pub async fn add(
+        self: &Arc<Self>,
+        guid: &Arc<Guid>,
+        id: usize,
+        socket: Box<dyn Socket + 'static>,
+        auth_mechanism: AuthMechanism,
+    ) -> Result<()> {
+        let mut peers = self.peers_mut().await;
+        let peer = Peer::new(guid.clone(), id, socket, auth_mechanism, self.clone()).await?;
         let unique_name = peer.unique_name().clone();
         let mut peers = self.peers.write().await;
         match peers.get(&unique_name) {
@@ -71,6 +80,8 @@ impl Peers {
                 }
             }
         }
+
+        Ok(())
     }
 
     pub async fn peers(&self) -> impl Deref<Target = BTreeMap<OwnedUniqueName, Peer>> + '_ {

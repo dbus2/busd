@@ -11,7 +11,7 @@ use tokio::{fs::remove_file, spawn};
 use tracing::{debug, info, warn};
 use zbus::{Address, AuthMechanism, Guid, Socket, TcpAddress};
 
-use crate::{peer::Peer, peers::Peers};
+use crate::peers::Peers;
 
 /// The bus.
 #[derive(Debug)]
@@ -80,17 +80,13 @@ impl Bus {
             let id = self.next_id();
             let inner = self.inner.clone();
             spawn(async move {
-                match Peer::new(
-                    inner.guid.clone(),
-                    id,
-                    socket,
-                    inner.auth_mechanism,
-                    inner.peers.clone(),
-                )
-                .await
+                if let Err(e) = inner
+                    .peers
+                    .clone()
+                    .add(&inner.guid, id, socket, inner.auth_mechanism)
+                    .await
                 {
-                    Ok(peer) => inner.peers.add(peer).await,
-                    Err(e) => warn!("Failed to establish connection: {}", e),
+                    warn!("Failed to establish connection: {}", e);
                 }
             });
         }
