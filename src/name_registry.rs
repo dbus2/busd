@@ -1,16 +1,13 @@
 use enumflags2::BitFlags;
 use std::collections::{HashMap, VecDeque};
-use tokio::sync::mpsc::{Receiver, Sender};
-use tracing::debug;
 use zbus::{
     fdo::{ReleaseNameReply, RequestNameFlags, RequestNameReply},
     names::{BusName, OwnedBusName, OwnedUniqueName, OwnedWellKnownName, WellKnownName},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct NameRegistry {
     names: HashMap<OwnedWellKnownName, NameEntry>,
-    name_changed_tx: Sender<NameOwnerChanged>,
 }
 
 #[derive(Clone, Debug)]
@@ -42,23 +39,12 @@ impl NameOwner {
 }
 
 impl NameRegistry {
-    pub fn new() -> (Self, Receiver<NameOwnerChanged>) {
-        let (name_changed_tx, name_changed_rx) = tokio::sync::mpsc::channel(64);
-        (
-            Self {
-                names: HashMap::new(),
-                name_changed_tx,
-            },
-            name_changed_rx,
-        )
-    }
-
     pub async fn request_name(
         &mut self,
         name: OwnedWellKnownName,
         unique_name: OwnedUniqueName,
         flags: BitFlags<RequestNameFlags>,
-    ) -> RequestNameReply {
+    ) -> (RequestNameReply, Option<NameOwnerChanged>) {
         let owner = NameOwner {
             unique_name: unique_name.clone(),
             allow_replacement: flags.contains(RequestNameFlags::AllowReplacement),
@@ -67,31 +53,27 @@ impl NameRegistry {
         match self.names.get_mut(&name) {
             Some(entry) => {
                 if entry.owner.unique_name == unique_name {
-                    RequestNameReply::AlreadyOwner
+                    (RequestNameReply::AlreadyOwner, None)
                 } else if flags.contains(RequestNameFlags::ReplaceExisting)
                     && entry.owner.allow_replacement
                 {
                     let old_owner = entry.owner.unique_name.clone();
                     entry.owner = owner;
 
-                    if let Err(e) = self
-                        .name_changed_tx
-                        .send(NameOwnerChanged {
+                    (
+                        RequestNameReply::PrimaryOwner,
+                        Some(NameOwnerChanged {
                             name: BusName::from(name).into(),
                             old_owner: Some(old_owner),
                             new_owner: Some(unique_name),
-                        })
-                        .await
-                    {
-                        debug!("failed to send NameOwnerChanged: {e}");
-                    }
-                    RequestNameReply::PrimaryOwner
+                        }),
+                    )
                 } else if !flags.contains(RequestNameFlags::DoNotQueue) {
                     entry.waiting_list.push_back(owner);
 
-                    RequestNameReply::InQueue
+                    (RequestNameReply::InQueue, None)
                 } else {
-                    RequestNameReply::Exists
+                    (RequestNameReply::Exists, None)
                 }
             }
             None => {
@@ -103,19 +85,14 @@ impl NameRegistry {
                     },
                 );
 
-                if let Err(e) = self
-                    .name_changed_tx
-                    .send(NameOwnerChanged {
+                (
+                    RequestNameReply::PrimaryOwner,
+                    Some(NameOwnerChanged {
                         name: BusName::from(name).into(),
                         old_owner: None,
                         new_owner: Some(unique_name),
-                    })
-                    .await
-                {
-                    debug!("failed to send NameOwnerChanged: {e}");
-                }
-
-                RequestNameReply::PrimaryOwner
+                    }),
+                )
             }
         }
     }
@@ -124,8 +101,7 @@ impl NameRegistry {
         &mut self,
         name: OwnedWellKnownName,
         owner: OwnedUniqueName,
-    ) -> ReleaseNameReply {
-        let name_changed_tx = self.name_changed_tx.clone();
+    ) -> (ReleaseNameReply, Option<NameOwnerChanged>) {
         match self.names.get_mut(name.as_str()) {
             Some(entry) => {
                 if *entry.owner.unique_name == owner {
@@ -141,35 +117,31 @@ impl NameRegistry {
                         }
                     };
 
-                    if let Err(e) = name_changed_tx
-                        .send(NameOwnerChanged {
+                    (
+                        ReleaseNameReply::Released,
+                        Some(NameOwnerChanged {
                             name: BusName::from(name).into(),
                             old_owner: Some(owner),
                             new_owner: new_owner_name,
-                        })
-                        .await
-                    {
-                        debug!("failed to send NameOwnerChanged: {e}");
-                    }
-
-                    ReleaseNameReply::Released
+                        }),
+                    )
                 } else {
                     for (i, waiting) in entry.waiting_list.iter().enumerate() {
                         if *waiting.unique_name == owner {
                             entry.waiting_list.remove(i);
 
-                            return ReleaseNameReply::Released;
+                            return (ReleaseNameReply::Released, None);
                         }
                     }
 
-                    ReleaseNameReply::NonExistent
+                    (ReleaseNameReply::NonExistent, None)
                 }
             }
-            None => ReleaseNameReply::NonExistent,
+            None => (ReleaseNameReply::NonExistent, None),
         }
     }
 
-    pub async fn release_all(&mut self, owner: OwnedUniqueName) {
+    pub async fn release_all(&mut self, owner: OwnedUniqueName) -> Vec<NameOwnerChanged> {
         // Find all names registered and queued by the given owner.
         let names: Vec<_> = self
             .names
@@ -188,9 +160,15 @@ impl NameRegistry {
             })
             .collect();
         // Now release our claim or waiting list tickets from all these names.
+        let mut all_changed = vec![];
         for name in names {
-            self.release_name(name, owner.clone()).await;
+            let (_, changed) = self.release_name(name, owner.clone()).await;
+            if let Some(changed) = changed {
+                all_changed.push(changed);
+            }
         }
+
+        all_changed
     }
 
     pub fn lookup(&self, name: WellKnownName) -> Option<OwnedUniqueName> {
@@ -208,10 +186,6 @@ impl NameRegistry {
         name: WellKnownName<'_>,
     ) -> Option<impl Iterator<Item = &NameOwner>> {
         self.names.get(name.as_str()).map(|e| e.waiting_list.iter())
-    }
-
-    pub fn name_changed_tx(&self) -> &Sender<NameOwnerChanged> {
-        &self.name_changed_tx
     }
 }
 

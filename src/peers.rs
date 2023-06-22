@@ -1,51 +1,52 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{stream::StreamExt, SinkExt};
-#[cfg(unix)]
-use std::os::fd::AsRawFd;
 use std::{
     collections::BTreeMap,
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use tokio::sync::{
-    mpsc::{Receiver, Sender},
-    RwLock,
-};
+use tokio::sync::RwLock;
 use tracing::{debug, trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
-    zvariant::Type,
-    MessageBuilder, MessageField, MessageFieldCode, MessageStream, MessageType,
+    zvariant::Optional,
+    AuthMechanism, Guid, MessageBuilder, MessageField, MessageFieldCode, MessageType,
+    SignalContext, Socket,
 };
 
 use crate::{
+    fdo::DBus,
     name_registry::{NameOwnerChanged, NameRegistry},
     peer::Peer,
+    peer_stream::PeerStream,
 };
 
 #[derive(Debug)]
 pub struct Peers {
     peers: RwLock<BTreeMap<OwnedUniqueName, Peer>>,
     name_registry: RwLock<NameRegistry>,
-    name_changed_tx: Sender<NameOwnerChanged>,
 }
 
 impl Peers {
-    pub fn new() -> (Self, Receiver<NameOwnerChanged>) {
-        let (name_registry, name_changed_rx) = NameRegistry::new();
-        (
-            Self {
-                peers: RwLock::new(BTreeMap::new()),
-                name_changed_tx: name_registry.name_changed_tx().clone(),
-                name_registry: RwLock::new(name_registry),
-            },
-            name_changed_rx,
-        )
+    pub fn new() -> Arc<Self> {
+        let name_registry = NameRegistry::default();
+
+        Arc::new(Self {
+            peers: RwLock::new(BTreeMap::new()),
+            name_registry: RwLock::new(name_registry),
+        })
     }
 
-    pub async fn add(self: &Arc<Self>, peer: Peer) {
+    pub async fn add(
+        self: &Arc<Self>,
+        guid: &Arc<Guid>,
+        id: usize,
+        socket: Box<dyn Socket + 'static>,
+        auth_mechanism: AuthMechanism,
+    ) -> Result<()> {
+        let mut peers = self.peers_mut().await;
+        let peer = Peer::new(guid.clone(), id, socket, auth_mechanism, self.clone()).await?;
         let unique_name = peer.unique_name().clone();
-        let mut peers = self.peers.write().await;
         match peers.get(&unique_name) {
             Some(peer) => panic!(
                 "Unique name `{}` re-used. We're in deep trouble if this happens",
@@ -55,20 +56,10 @@ impl Peers {
                 let peer_stream = peer.stream();
                 tokio::spawn(self.clone().serve_peer(peer_stream, unique_name.clone()));
                 peers.insert(unique_name.clone(), peer);
-                drop(peers);
-                if let Err(e) = self
-                    .name_changed_tx
-                    .send(NameOwnerChanged {
-                        name: BusName::from(unique_name.to_owned()).into(),
-                        old_owner: None,
-                        new_owner: Some(unique_name),
-                    })
-                    .await
-                {
-                    debug!("failed to send NameOwnerChanged: {e}");
-                }
             }
         }
+
+        Ok(())
     }
 
     pub async fn peers(&self) -> impl Deref<Target = BTreeMap<OwnedUniqueName, Peer>> + '_ {
@@ -87,9 +78,62 @@ impl Peers {
         self.name_registry.write().await
     }
 
+    pub async fn notify_name_changes(&self, name_owner_changed: NameOwnerChanged) -> Result<()> {
+        let name = BusName::from(name_owner_changed.name);
+        let old_owner = name_owner_changed.old_owner.map(UniqueName::from);
+        let new_owner = name_owner_changed.new_owner.map(UniqueName::from);
+
+        // First broadcast the name change signal.
+        let msg = MessageBuilder::signal(
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "NameOwnerChanged",
+        )
+        .unwrap()
+        .sender("org.freedesktop.DBus")
+        .unwrap()
+        .build(&(
+            &name,
+            Optional::from(old_owner.clone()),
+            Optional::from(new_owner.clone()),
+        ))?;
+        self.broadcast_msg(Arc::new(msg)).await;
+
+        // Now unicast the appropriate signal to the old and new owners.
+        let peers = self.peers().await;
+        if let Some(old_owner) = old_owner {
+            match peers.get(&*old_owner) {
+                Some(peer) => {
+                    let signal_ctxt = SignalContext::new(peer.conn(), "/org/freedesktop/DBus")
+                        .unwrap()
+                        .set_destination(old_owner.into());
+                    DBus::name_lost(&signal_ctxt, name.clone()).await?;
+                }
+                None => {
+                    warn!("Couldn't notify inexistant peer {old_owner} about loosing name {name}")
+                }
+            }
+        }
+        if let Some(new_owner) = new_owner {
+            match peers.get(&*new_owner) {
+                Some(peer) => {
+                    let signal_ctxt = SignalContext::new(peer.conn(), "/org/freedesktop/DBus")
+                        .unwrap()
+                        .set_destination(new_owner.into());
+                    DBus::name_acquired(&signal_ctxt, name.clone()).await?;
+                }
+                None => {
+                    warn!("Couldn't notify inexistant peer {new_owner} about acquiring name {name}")
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     async fn serve_peer(
         self: Arc<Self>,
-        mut peer_stream: MessageStream,
+        mut peer_stream: PeerStream,
         unique_name: OwnedUniqueName,
     ) -> Result<()> {
         while let Some(msg) = peer_stream.next().await {
@@ -101,118 +145,37 @@ impl Peers {
                     continue;
                 }
             };
-            let fields = match msg.message_type() {
-                MessageType::MethodCall
-                | MessageType::MethodReturn
-                | MessageType::Error
-                | MessageType::Signal => match msg.fields() {
-                    Ok(fields) => fields,
-                    Err(e) => {
-                        warn!("failed to parse message: {}", e);
 
-                        continue;
+            match msg.message_type() {
+                MessageType::Signal => self.broadcast_msg(msg).await,
+                _ => match msg.fields()?.get_field(MessageFieldCode::Destination) {
+                    Some(MessageField::Destination(dest)) => {
+                        if let Err(e) = self.send_msg(msg.clone(), dest.clone()).await {
+                            warn!("{}", e);
+                        }
                     }
+                    // PeerStream ensures a valid destination so this isn't exactly needed.
+                    _ => bail!("invalid message: {:?}", msg),
                 },
-                MessageType::Invalid => todo!(),
-            };
-            // Ensure sender field is present. If it is not we add it using the unique name of the peer.
-            let (msg, fields) = match fields.get_field(MessageFieldCode::Sender) {
-                Some(MessageField::Sender(sender)) if *sender == unique_name => {
-                    (msg.clone(), fields)
-                }
-                Some(_) => {
-                    warn!("failed to parse message: Invalid sender field");
-
-                    continue;
-                }
-                None => {
-                    let header = match msg.header() {
-                        Ok(hdr) => hdr,
-                        Err(e) => {
-                            warn!("failed to parse message: {}", e);
-
-                            continue;
-                        }
-                    };
-                    let signature = match header.signature() {
-                        Ok(Some(sig)) => sig.clone(),
-                        Ok(None) => <()>::signature(),
-                        Err(e) => {
-                            warn!("Failed to parse signature from message: {}", e);
-
-                            continue;
-                        }
-                    };
-                    let body_bytes = match msg.body_as_bytes() {
-                        Ok(bytes) => bytes,
-                        Err(e) => {
-                            warn!("failed to parse message: {}", e);
-
-                            continue;
-                        }
-                    };
-                    let builder = MessageBuilder::from(header.clone()).sender(&unique_name)?;
-                    let new_msg = match unsafe {
-                        builder.build_raw_body(
-                            body_bytes,
-                            signature,
-                            #[cfg(unix)]
-                            msg.take_fds().iter().map(|fd| fd.as_raw_fd()).collect(),
-                        )
-                    } {
-                        Ok(msg) => msg,
-                        Err(e) => {
-                            warn!("failed to parse message: {}", e);
-
-                            continue;
-                        }
-                    };
-
-                    // SAFETY: We take the fields verbatim from the original message so we can
-                    // assume it has valid fields.
-                    let fields = msg.fields().expect("Missing message header fields");
-
-                    trace!("Added sender field to message: {:?}", new_msg);
-                    (Arc::new(new_msg), fields)
-                }
-            };
-
-            match fields.get_field(MessageFieldCode::Destination) {
-                Some(MessageField::Destination(dest)) => {
-                    if let Err(e) = self.send_msg(msg.clone(), dest.clone()).await {
-                        warn!("{}", e);
-                    }
-                }
-                Some(_) => {
-                    warn!("failed to parse message: Missing destination");
-                }
-                None => {
-                    if msg.message_type() == MessageType::Signal {
-                        self.broadcast_msg(msg).await;
-                    } else {
-                        warn!("missing destination field");
-                    }
-                }
             };
         }
 
         // Stream is done means the peer disconnected. Remove it from the list of peers.
-        self.name_registry_mut()
+        self.peers_mut().await.remove(&unique_name);
+        let names_changes = self
+            .name_registry_mut()
             .await
             .release_all(unique_name.clone())
             .await;
-        if let Err(e) = self
-            .name_changed_tx
-            .send(NameOwnerChanged {
-                name: BusName::from(unique_name.clone()).into(),
-                old_owner: Some(unique_name.clone()),
-                new_owner: None,
-            })
-            .await
-        {
-            debug!("failed to send NameOwnerChanged: {e}");
+        for changed in names_changes {
+            self.notify_name_changes(changed).await?;
         }
-        self.peers_mut().await.remove(&unique_name);
+        self.notify_name_changes(NameOwnerChanged {
+            name: BusName::from(unique_name.clone()).into(),
+            old_owner: Some(unique_name.clone()),
+            new_owner: None,
+        })
+        .await?;
 
         Ok(())
     }
@@ -258,8 +221,10 @@ impl Peers {
 
     async fn broadcast_msg(&self, msg: Arc<zbus::Message>) {
         trace!("Braadcasting message: {:?}", msg);
+        let name_registry = self.name_registry().await;
         for peer in self.peers.read().await.values() {
-            if !peer.interested(&msg).await {
+            if !peer.interested(&msg, &name_registry).await {
+                trace!("Peer {} not interested in {msg:?}", peer.unique_name());
                 continue;
             }
 

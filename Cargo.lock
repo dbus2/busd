@@ -266,7 +266,6 @@ dependencies = [
  "hex",
  "nix 0.25.0",
  "ntest",
- "parking_lot",
  "rand",
  "serde",
  "tokio",
@@ -2012,7 +2011,7 @@ dependencies = [
 [[package]]
 name = "zbus"
 version = "3.13.1"
-source = "git+https://github.com/dbus2/zbus/#2e34b2b2816654733bc877234dd25c38a2e8a2fe"
+source = "git+https://github.com/dbus2/zbus/#662a6d14be7751a583d088103ea1752fdc85a69a"
 dependencies = [
  "async-broadcast",
  "async-process",
@@ -2047,7 +2046,7 @@ dependencies = [
 [[package]]
 name = "zbus_macros"
 version = "3.13.1"
-source = "git+https://github.com/dbus2/zbus/#2e34b2b2816654733bc877234dd25c38a2e8a2fe"
+source = "git+https://github.com/dbus2/zbus/#662a6d14be7751a583d088103ea1752fdc85a69a"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2060,7 +2059,7 @@ dependencies = [
 [[package]]
 name = "zbus_names"
 version = "2.5.1"
-source = "git+https://github.com/dbus2/zbus/#2e34b2b2816654733bc877234dd25c38a2e8a2fe"
+source = "git+https://github.com/dbus2/zbus/#662a6d14be7751a583d088103ea1752fdc85a69a"
 dependencies = [
  "serde",
  "static_assertions",
@@ -2070,7 +2069,7 @@ dependencies = [
 [[package]]
 name = "zvariant"
 version = "3.14.0"
-source = "git+https://github.com/dbus2/zbus/#2e34b2b2816654733bc877234dd25c38a2e8a2fe"
+source = "git+https://github.com/dbus2/zbus/#662a6d14be7751a583d088103ea1752fdc85a69a"
 dependencies = [
  "byteorder",
  "enumflags2",
@@ -2083,7 +2082,7 @@ dependencies = [
 [[package]]
 name = "zvariant_derive"
 version = "3.14.0"
-source = "git+https://github.com/dbus2/zbus/#2e34b2b2816654733bc877234dd25c38a2e8a2fe"
+source = "git+https://github.com/dbus2/zbus/#662a6d14be7751a583d088103ea1752fdc85a69a"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2095,7 +2094,7 @@ dependencies = [
 [[package]]
 name = "zvariant_utils"
 version = "1.0.1"
-source = "git+https://github.com/dbus2/zbus/#2e34b2b2816654733bc877234dd25c38a2e8a2fe"
+source = "git+https://github.com/dbus2/zbus/#662a6d14be7751a583d088103ea1752fdc85a69a"
 dependencies = [
  "proc-macro2",
  "quote",

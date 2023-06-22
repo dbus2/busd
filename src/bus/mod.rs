@@ -7,21 +7,25 @@ use std::{
     path::{Path, PathBuf},
 };
 use std::{str::FromStr, sync::Arc};
-use tokio::{fs::remove_file, spawn, sync::mpsc::Receiver};
+use tokio::{fs::remove_file, spawn};
 use tracing::{debug, info, warn};
 use zbus::{Address, AuthMechanism, Guid, Socket, TcpAddress};
 
-use crate::{
-    name_registry::NameOwnerChanged, peer::Peer, peers::Peers, self_dial_conn::SelfDialConn,
-};
+use crate::peers::Peers;
 
 /// The bus.
 #[derive(Debug)]
 pub struct Bus {
-    peers: Arc<Peers>,
+    inner: Inner,
     listener: Listener,
+}
+
+// All (cheaply) cloneable fields of `Bus` go here.
+#[derive(Clone, Debug)]
+pub struct Inner {
+    peers: Arc<Peers>,
     guid: Arc<Guid>,
-    next_id: Option<usize>,
+    next_id: usize,
     auth_mechanism: AuthMechanism,
 }
 
@@ -44,7 +48,7 @@ impl Bus {
             None => default_address(),
         };
         let address = Address::from_str(&address)?;
-        let (mut bus, name_changed_rx) = match &address {
+        match &address {
             #[cfg(unix)]
             Address::Unix(path) => {
                 let path = Path::new(&path);
@@ -66,23 +70,25 @@ impl Bus {
                 Err(anyhow!("`autolaunch` transport is not supported (yet)."))?
             }
             _ => Err(anyhow!("Unsupported address `{}`.", address))?,
-        }?;
-
-        // Create a peer for ourselves.
-        let (self_dial_conn, self_dial_peer) =
-            SelfDialConn::connect(&mut bus, address.clone()).await?;
-        bus.peers.add(self_dial_peer).await;
-        spawn(self_dial_conn.monitor_name_changes(name_changed_rx));
-
-        Ok(bus)
+        }
     }
 
     pub async fn run(&mut self) -> Result<()> {
         loop {
-            match self.accept_next().await {
-                Ok(peer) => self.peers.add(peer).await,
-                Err(e) => warn!("Failed to establish connection: {}", e),
-            }
+            let socket = self.accept().await?;
+
+            let id = self.next_id();
+            let inner = self.inner.clone();
+            spawn(async move {
+                if let Err(e) = inner
+                    .peers
+                    .clone()
+                    .add(&inner.guid, id, socket, inner.auth_mechanism)
+                    .await
+                {
+                    warn!("Failed to establish connection: {}", e);
+                }
+            });
         }
     }
 
@@ -97,28 +103,20 @@ impl Bus {
         }
     }
 
-    fn new(
-        listener: Listener,
-        auth_mechanism: AuthMechanism,
-    ) -> (Self, Receiver<NameOwnerChanged>) {
-        let (peers, name_changed_rx) = Peers::new();
-        (
-            Self {
-                listener,
-                peers: Arc::new(peers),
+    fn new(listener: Listener, auth_mechanism: AuthMechanism) -> Self {
+        Self {
+            listener,
+            inner: Inner {
+                peers: Peers::new(),
                 guid: Arc::new(Guid::generate()),
-                next_id: None,
+                next_id: 0,
                 auth_mechanism,
             },
-            name_changed_rx,
-        )
+        }
     }
 
     #[cfg(unix)]
-    async fn unix_stream(
-        socket_path: &Path,
-        auth_mechanism: AuthMechanism,
-    ) -> Result<(Self, Receiver<NameOwnerChanged>)> {
+    async fn unix_stream(socket_path: &Path, auth_mechanism: AuthMechanism) -> Result<Self> {
         let socket_path = socket_path.to_path_buf();
         let listener = Listener::Unix {
             listener: tokio::net::UnixListener::bind(&socket_path)?,
@@ -128,10 +126,7 @@ impl Bus {
         Ok(Self::new(listener, auth_mechanism))
     }
 
-    async fn tcp_stream(
-        address: &TcpAddress,
-        auth_mechanism: AuthMechanism,
-    ) -> Result<(Self, Receiver<NameOwnerChanged>)> {
+    async fn tcp_stream(address: &TcpAddress, auth_mechanism: AuthMechanism) -> Result<Self> {
         let address = (address.host(), address.port());
         let listener = Listener::Tcp {
             listener: tokio::net::TcpListener::bind(address).await?,
@@ -140,30 +135,10 @@ impl Bus {
         Ok(Self::new(listener, auth_mechanism))
     }
 
-    pub async fn accept_next(&mut self) -> Result<Peer> {
-        let socket = self.accept().await?;
-        if self.auth_mechanism == AuthMechanism::Cookie {
+    pub async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
+        if self.auth_mechanism() == AuthMechanism::Cookie {
             cookies::sync().await?;
         }
-        Peer::new(
-            &self.guid,
-            self.next_id,
-            socket,
-            self.auth_mechanism,
-            self.peers.clone(),
-        )
-        .await
-        .map(|peer| {
-            match self.next_id.as_mut() {
-                Some(id) => *id += 1,
-                None => self.next_id = Some(0),
-            }
-
-            peer
-        })
-    }
-
-    async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
         match &mut self.listener {
             #[cfg(unix)]
             Listener::Unix {
@@ -185,15 +160,21 @@ impl Bus {
     }
 
     pub fn peers(&self) -> &Arc<Peers> {
-        &self.peers
+        &self.inner.peers
     }
 
     pub fn guid(&self) -> &Arc<Guid> {
-        &self.guid
+        &self.inner.guid
     }
 
     pub fn auth_mechanism(&self) -> AuthMechanism {
-        self.auth_mechanism
+        self.inner.auth_mechanism
+    }
+
+    fn next_id(&mut self) -> usize {
+        self.inner.next_id += 1;
+
+        self.inner.next_id
     }
 }
 
