@@ -135,7 +135,7 @@ impl Bus {
         Ok(Self::new(listener, auth_mechanism))
     }
 
-    pub async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
+    async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
         if self.auth_mechanism() == AuthMechanism::Cookie {
             cookies::sync().await?;
         }
