@@ -21,12 +21,15 @@ pub struct Peer {
 impl Peer {
     pub async fn new(
         guid: Arc<Guid>,
-        id: usize,
+        id: Option<usize>,
         socket: Box<dyn Socket + 'static>,
         auth_mechanism: AuthMechanism,
         peers: Arc<Peers>,
     ) -> Result<Self> {
-        let unique_name = OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap();
+        let unique_name = match id {
+            Some(id) => OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap(),
+            None => OwnedUniqueName::try_from("org.freedesktop.DBus").unwrap(),
+        };
         let dbus = DBus::new(unique_name.clone(), peers.clone(), guid.clone());
         let conn = ConnectionBuilder::socket(socket)
             .server(&guid)

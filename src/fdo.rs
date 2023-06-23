@@ -196,13 +196,6 @@ impl DBus {
         &self,
         bus_name: BusName<'_>,
     ) -> Result<ConnectionCredentials> {
-        if bus_name == "org.freedesktop.DBus" {
-            // TODO: We need to implement this for bus too.
-            return Err(Error::Failed(
-                "Not yet implemented for bus itself".to_string(),
-            ));
-        }
-
         let owner = self.get_name_owner(bus_name.clone()).await?;
         let peers = self.peers()?;
         let peers = peers.peers().await;
