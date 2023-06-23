@@ -164,7 +164,7 @@ impl Peers {
         let names_changes = self
             .name_registry_mut()
             .await
-            .release_all(unique_name.clone())
+            .release_all(unique_name.inner().clone())
             .await;
         for changed in names_changes {
             self.notify_name_changes(changed).await?;

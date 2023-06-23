@@ -13,8 +13,7 @@ use zbus::{
         ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
     },
     names::{
-        BusName, OwnedBusName, OwnedInterfaceName, OwnedUniqueName, OwnedWellKnownName, UniqueName,
-        WellKnownName,
+        BusName, OwnedBusName, OwnedInterfaceName, OwnedUniqueName, UniqueName, WellKnownName,
     },
     zvariant::{Optional, Signature, Type},
     Guid, OwnedMatchRule, SignalContext,
@@ -108,15 +107,14 @@ impl DBus {
     /// Ask the message bus to assign the given name to the method caller.
     async fn request_name(
         &self,
-        name: OwnedWellKnownName,
+        name: WellKnownName<'_>,
         flags: BitFlags<RequestNameFlags>,
     ) -> Result<RequestNameReply> {
-        let unique_name = &self.unique_name;
         let peers = self.peers()?;
         let (reply, name_owner_changed) = peers
             .name_registry_mut()
             .await
-            .request_name(name, unique_name.clone(), flags)
+            .request_name(name, self.unique_name.inner().clone(), flags)
             .await;
         if let Some(changed) = name_owner_changed {
             peers
@@ -129,13 +127,12 @@ impl DBus {
     }
 
     /// Ask the message bus to release the method caller's claim to the given name.
-    async fn release_name(&self, name: OwnedWellKnownName) -> Result<ReleaseNameReply> {
-        let unique_name = &self.unique_name;
+    async fn release_name(&self, name: WellKnownName<'_>) -> Result<ReleaseNameReply> {
         let peers = self.peers()?;
         let (reply, name_owner_changed) = peers
             .name_registry_mut()
             .await
-            .release_name(name, unique_name.clone())
+            .release_name(name, self.unique_name.inner().clone())
             .await;
         if let Some(changed) = name_owner_changed {
             peers
