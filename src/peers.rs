@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use futures_util::{stream::StreamExt, SinkExt};
 use std::{
     collections::BTreeMap,
@@ -191,9 +191,7 @@ impl Peers {
             BusName::WellKnown(name) => {
                 let dest = match self.name_registry().await.lookup(name.clone()) {
                     Some(dest) => dest,
-                    None => {
-                        return Err(anyhow!("unknown destination: {}", name));
-                    }
+                    None => bail!("unknown destination: {}", name),
                 };
                 self.send_msg_to_unique_name(msg, (&*dest).into()).await
             }

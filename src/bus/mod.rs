@@ -1,6 +1,6 @@
 mod cookies;
 
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{bail, Ok, Result};
 use clap::__macro_refs::once_cell::sync::OnceCell;
 use futures_util::{try_join, TryFutureExt};
 #[cfg(unix)]
@@ -60,19 +60,15 @@ impl Bus {
                 Self::unix_stream(path, auth_mechanism).await
             }
             #[cfg(not(unix))]
-            Address::Unix(_) => Err(anyhow!("`unix` transport on non-UNIX OS is not supported."))?,
+            Address::Unix(_) => bail!("`unix` transport on non-UNIX OS is not supported."),
             Address::Tcp(address) => {
                 info!("Listening on `{}:{}`.", address.host(), address.port());
 
                 Self::tcp_stream(address, auth_mechanism).await
             }
-            Address::NonceTcp { .. } => {
-                Err(anyhow!("`nonce-tcp` transport is not supported (yet)."))?
-            }
-            Address::Autolaunch(_) => {
-                Err(anyhow!("`autolaunch` transport is not supported (yet)."))?
-            }
-            _ => Err(anyhow!("Unsupported address `{}`.", address))?,
+            Address::NonceTcp { .. } => bail!("`nonce-tcp` transport is not supported (yet)."),
+            Address::Autolaunch(_) => bail!("`autolaunch` transport is not supported (yet)."),
+            _ => bail!("Unsupported address `{}`.", address),
         }?;
 
         // Create a peer for ourselves.
