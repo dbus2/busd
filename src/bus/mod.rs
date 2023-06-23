@@ -1,6 +1,8 @@
 mod cookies;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Ok, Result};
+use clap::__macro_refs::once_cell::sync::OnceCell;
+use futures_util::{try_join, TryFutureExt};
 #[cfg(unix)]
 use std::{
     env,
@@ -8,8 +10,8 @@ use std::{
 };
 use std::{str::FromStr, sync::Arc};
 use tokio::{fs::remove_file, spawn};
-use tracing::{debug, info, warn};
-use zbus::{Address, AuthMechanism, Guid, Socket, TcpAddress};
+use tracing::{debug, info, trace, warn};
+use zbus::{Address, AuthMechanism, Connection, ConnectionBuilder, Guid, Socket, TcpAddress};
 
 use crate::peers::Peers;
 
@@ -25,8 +27,9 @@ pub struct Bus {
 pub struct Inner {
     peers: Arc<Peers>,
     guid: Arc<Guid>,
-    next_id: usize,
+    next_id: Option<usize>,
     auth_mechanism: AuthMechanism,
+    self_conn: OnceCell<Connection>,
 }
 
 #[derive(Debug)]
@@ -48,7 +51,7 @@ impl Bus {
             None => default_address(),
         };
         let address = Address::from_str(&address)?;
-        match &address {
+        let mut bus = match &address {
             #[cfg(unix)]
             Address::Unix(path) => {
                 let path = Path::new(&path);
@@ -70,25 +73,25 @@ impl Bus {
                 Err(anyhow!("`autolaunch` transport is not supported (yet)."))?
             }
             _ => Err(anyhow!("Unsupported address `{}`.", address))?,
-        }
+        }?;
+
+        // Create a peer for ourselves.
+        trace!("Creating self-dial connection.");
+        let conn_builder_fut = ConnectionBuilder::address(address)?
+            .auth_mechanisms(&[auth_mechanism])
+            .build()
+            .map_err(Into::into);
+
+        let (conn, ()) = try_join!(conn_builder_fut, bus.accept_next())?;
+        bus.inner.self_conn.set(conn).unwrap();
+        trace!("Self-dial connection created.");
+
+        Ok(bus)
     }
 
     pub async fn run(&mut self) -> Result<()> {
         loop {
-            let socket = self.accept().await?;
-
-            let id = self.next_id();
-            let inner = self.inner.clone();
-            spawn(async move {
-                if let Err(e) = inner
-                    .peers
-                    .clone()
-                    .add(&inner.guid, id, socket, inner.auth_mechanism)
-                    .await
-                {
-                    warn!("Failed to establish connection: {}", e);
-                }
-            });
+            self.accept_next().await?;
         }
     }
 
@@ -109,8 +112,9 @@ impl Bus {
             inner: Inner {
                 peers: Peers::new(),
                 guid: Arc::new(Guid::generate()),
-                next_id: 0,
+                next_id: None,
                 auth_mechanism,
+                self_conn: OnceCell::new(),
             },
         }
     }
@@ -135,7 +139,26 @@ impl Bus {
         Ok(Self::new(listener, auth_mechanism))
     }
 
-    pub async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
+    async fn accept_next(&mut self) -> Result<()> {
+        let socket = self.accept().await?;
+
+        let id = self.next_id();
+        let inner = self.inner.clone();
+        spawn(async move {
+            if let Err(e) = inner
+                .peers
+                .clone()
+                .add(&inner.guid, id, socket, inner.auth_mechanism)
+                .await
+            {
+                warn!("Failed to establish connection: {}", e);
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
         if self.auth_mechanism() == AuthMechanism::Cookie {
             cookies::sync().await?;
         }
@@ -171,10 +194,19 @@ impl Bus {
         self.inner.auth_mechanism
     }
 
-    fn next_id(&mut self) -> usize {
-        self.inner.next_id += 1;
+    fn next_id(&mut self) -> Option<usize> {
+        match self.inner.next_id {
+            None => {
+                self.inner.next_id = Some(0);
 
-        self.inner.next_id
+                None
+            }
+            Some(id) => {
+                self.inner.next_id = Some(id + 1);
+
+                Some(id)
+            }
+        }
     }
 }
 

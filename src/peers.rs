@@ -40,7 +40,7 @@ impl Peers {
     pub async fn add(
         self: &Arc<Self>,
         guid: &Arc<Guid>,
-        id: usize,
+        id: Option<usize>,
         socket: Box<dyn Socket + 'static>,
         auth_mechanism: AuthMechanism,
     ) -> Result<()> {
