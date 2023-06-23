@@ -17,8 +17,7 @@ use zbus::{
 use crate::{
     fdo::DBus,
     name_registry::{NameOwnerChanged, NameRegistry},
-    peer::Peer,
-    peer_stream::PeerStream,
+    peer::{Peer, Stream},
 };
 
 #[derive(Debug)]
@@ -133,7 +132,7 @@ impl Peers {
 
     async fn serve_peer(
         self: Arc<Self>,
-        mut peer_stream: PeerStream,
+        mut peer_stream: Stream,
         unique_name: OwnedUniqueName,
     ) -> Result<()> {
         while let Some(msg) = peer_stream.next().await {
@@ -154,7 +153,7 @@ impl Peers {
                             warn!("{}", e);
                         }
                     }
-                    // PeerStream ensures a valid destination so this isn't exactly needed.
+                    // peer::Stream ensures a valid destination so this isn't exactly needed.
                     _ => bail!("invalid message: {:?}", msg),
                 },
             };

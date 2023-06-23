@@ -3,7 +3,7 @@ use std::os::fd::AsRawFd;
 use std::{future::ready, pin::Pin, sync::Arc};
 
 use anyhow::{bail, Error, Result};
-use futures_util::{Stream, TryStream, TryStreamExt};
+use futures_util::{Stream as FutureStream, TryStream, TryStreamExt};
 use tracing::trace;
 use zbus::{
     zvariant::Type, Message, MessageBuilder, MessageField, MessageFieldCode, MessageStream,
@@ -18,14 +18,14 @@ use crate::peer::Peer;
 ///
 /// * The destination field is present and readable for non-signals.
 /// * The sender field is present and set to the unique name of the peer.
-pub struct PeerStream {
+pub struct Stream {
     stream: Pin<Box<PeerStreamInner>>,
 }
 
 type PeerStreamInner =
     dyn TryStream<Ok = Arc<Message>, Error = Error, Item = Result<Arc<Message>>> + Send;
 
-impl PeerStream {
+impl Stream {
     pub fn for_peer(peer: &Peer) -> Self {
         let unique_name = peer.unique_name().clone();
         let stream = MessageStream::from(peer.conn())
@@ -97,13 +97,13 @@ impl PeerStream {
     }
 }
 
-impl Stream for PeerStream {
+impl FutureStream for Stream {
     type Item = Result<Arc<Message>>;
 
     fn poll_next(
         self: Pin<&mut Self>,
         cx: &mut std::task::Context,
     ) -> std::task::Poll<Option<Result<Arc<Message>>>> {
-        Stream::poll_next(Pin::new(&mut self.get_mut().stream), cx)
+        FutureStream::poll_next(Pin::new(&mut self.get_mut().stream), cx)
     }
 }

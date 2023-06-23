@@ -1,3 +1,6 @@
+mod stream;
+pub use stream::*;
+
 use std::{collections::HashSet, sync::Arc};
 
 use anyhow::Result;
@@ -8,7 +11,7 @@ use zbus::{
     AuthMechanism, Connection, ConnectionBuilder, Guid, OwnedMatchRule, Socket,
 };
 
-use crate::{fdo::DBus, name_registry::NameRegistry, peer_stream::PeerStream, peers::Peers};
+use crate::{fdo::DBus, name_registry::NameRegistry, peers::Peers};
 
 /// A peer connection.
 #[derive(Debug)]
@@ -57,8 +60,8 @@ impl Peer {
         &self.conn
     }
 
-    pub fn stream(&self) -> PeerStream {
-        PeerStream::for_peer(self)
+    pub fn stream(&self) -> Stream {
+        Stream::for_peer(self)
     }
 
     /// # Panics
