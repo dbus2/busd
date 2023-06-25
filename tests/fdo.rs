@@ -64,6 +64,7 @@ async fn name_ownership_changes_(address: &str, auth_mechanism: AuthMechanism) {
 #[instrument]
 async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow::Result<()> {
     let conn = ConnectionBuilder::address(address)?.build().await?;
+    let conn_unique_name = conn.unique_name().unwrap().to_owned();
     let dbus_proxy = DBusProxy::builder(&conn)
         .cache_properties(CacheProperties::No)
         .build()
@@ -83,7 +84,7 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
     // Ensure signals were emitted.
     let changed = name_changed_stream.next().await.unwrap();
     ensure!(
-        *changed.args()?.name() == name,
+        *changed.args()?.name() == name || *changed.args()?.name() == *conn_unique_name,
         "expected name owner changed signal for our name"
     );
     ensure!(
