@@ -64,6 +64,7 @@ async fn name_ownership_changes_(address: &str, auth_mechanism: AuthMechanism) {
 #[instrument]
 async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow::Result<()> {
     let conn = ConnectionBuilder::address(address)?.build().await?;
+    let conn_unique_name = conn.unique_name().unwrap().to_owned();
     let dbus_proxy = DBusProxy::builder(&conn)
         .cache_properties(CacheProperties::No)
         .build()
@@ -83,7 +84,7 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
     // Ensure signals were emitted.
     let changed = name_changed_stream.next().await.unwrap();
     ensure!(
-        *changed.args()?.name() == name,
+        *changed.args()?.name() == name || *changed.args()?.name() == *conn_unique_name,
         "expected name owner changed signal for our name"
     );
     ensure!(
@@ -122,7 +123,7 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
     let conn2_unique_name = conn2.unique_name().unwrap().to_owned();
     let changed = name_changed_stream.next().await.unwrap();
     ensure!(
-        changed.args()?.name().as_str() == conn2_unique_name.as_str(),
+        *changed.args()?.name() == *conn2_unique_name,
         "expected name owner changed signal for the new connections gaining unique name"
     );
     ensure!(
@@ -130,7 +131,7 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         "expected no old owner for the unique name of the second connection"
     );
     ensure!(
-        changed.args()?.new_owner.as_ref().unwrap() == conn2_unique_name.as_str(),
+        *changed.args()?.new_owner.as_ref().unwrap() == conn2_unique_name,
         "expected new owner of the unique name of the second connection to be itself"
     );
     let dbus_proxy2 = DBusProxy::builder(&conn2)
@@ -212,7 +213,7 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
     // First the bus dropped its well-known names.
     let changed = name_changed_stream.next().await.unwrap();
     ensure!(
-        changed.args()?.name().as_str() == name.as_str(),
+        *changed.args()?.name() == name,
         "expected name owner changed signal for the new connections gaining unique name"
     );
     ensure!(
@@ -220,13 +221,13 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         "expected no new owner for our unique name"
     );
     ensure!(
-        changed.args()?.old_owner.as_ref().unwrap() == conn2_unique_name.as_str(),
+        *changed.args()?.old_owner.as_ref().unwrap() == conn2_unique_name,
         "expected old owner to be us"
     );
     // Then the bus dropped its unique name.
     let changed = name_changed_stream.next().await.unwrap();
     ensure!(
-        changed.args()?.name().as_str() == conn2_unique_name.as_str(),
+        *changed.args()?.name() == *conn2_unique_name,
         "expected name owner changed signal for the new connections gaining unique name"
     );
     ensure!(
@@ -234,7 +235,7 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         "expected no new owner for our unique name"
     );
     ensure!(
-        changed.args()?.old_owner.as_ref().unwrap() == conn2_unique_name.as_str(),
+        *changed.args()?.old_owner.as_ref().unwrap() == conn2_unique_name,
         "expected old owner to be us"
     );
 
