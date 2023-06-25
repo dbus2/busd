@@ -13,14 +13,17 @@ use zbus::{
         ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
     },
     names::{
-        BusName, OwnedBusName, OwnedInterfaceName, OwnedUniqueName, OwnedWellKnownName, UniqueName,
-        WellKnownName,
+        BusName, OwnedBusName, OwnedInterfaceName, OwnedUniqueName, UniqueName, WellKnownName,
     },
     zvariant::{Optional, Signature, Type},
     Guid, OwnedMatchRule, SignalContext,
 };
 
 use crate::{name_registry::NameOwnerChanged, peer::Peer, peers::Peers};
+
+pub const BUS_NAME: &str = "org.freedesktop.DBus";
+pub const DBUS_PATH: &str = "/org/freedesktop/DBus";
+pub const DBUS_INTERFACE: &str = "org.freedesktop.DBus";
 
 #[derive(Debug)]
 pub(super) struct DBus {
@@ -108,15 +111,14 @@ impl DBus {
     /// Ask the message bus to assign the given name to the method caller.
     async fn request_name(
         &self,
-        name: OwnedWellKnownName,
+        name: WellKnownName<'_>,
         flags: BitFlags<RequestNameFlags>,
     ) -> Result<RequestNameReply> {
-        let unique_name = &self.unique_name;
         let peers = self.peers()?;
         let (reply, name_owner_changed) = peers
             .name_registry_mut()
             .await
-            .request_name(name, unique_name.clone(), flags)
+            .request_name(name, self.unique_name.inner().clone(), flags)
             .await;
         if let Some(changed) = name_owner_changed {
             peers
@@ -129,13 +131,12 @@ impl DBus {
     }
 
     /// Ask the message bus to release the method caller's claim to the given name.
-    async fn release_name(&self, name: OwnedWellKnownName) -> Result<ReleaseNameReply> {
-        let unique_name = &self.unique_name;
+    async fn release_name(&self, name: WellKnownName<'_>) -> Result<ReleaseNameReply> {
         let peers = self.peers()?;
         let (reply, name_owner_changed) = peers
             .name_registry_mut()
             .await
-            .release_name(name, unique_name.clone())
+            .release_name(name, self.unique_name.inner().clone())
             .await;
         if let Some(changed) = name_owner_changed {
             peers
@@ -149,7 +150,7 @@ impl DBus {
 
     /// Returns the unique connection name of the primary owner of the name given.
     async fn get_name_owner(&self, name: BusName<'_>) -> Result<OwnedUniqueName> {
-        if name == "org.freedesktop.DBus" {
+        if name == BUS_NAME {
             return Ok(self.unique_name.clone());
         }
 
@@ -265,7 +266,7 @@ impl DBus {
     /// Returns a list of all currently-owned names on the bus.
     async fn list_names(&self) -> Result<Vec<OwnedBusName>> {
         let peers = self.peers()?;
-        let mut names = vec!["org.freedesktop.DBus".try_into().unwrap()];
+        let mut names = vec![BUS_NAME.try_into().unwrap()];
         names.extend(
             peers
                 .peers()

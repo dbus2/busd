@@ -1,14 +1,20 @@
+mod stream;
+pub use stream::*;
+
 use std::{collections::HashSet, sync::Arc};
 
 use anyhow::Result;
 use tracing::trace;
 use zbus::{
-    fdo,
     names::{BusName, OwnedUniqueName},
     AuthMechanism, Connection, ConnectionBuilder, Guid, OwnedMatchRule, Socket,
 };
 
-use crate::{fdo::DBus, name_registry::NameRegistry, peer_stream::PeerStream, peers::Peers};
+use crate::{
+    fdo::{self, DBus},
+    name_registry::NameRegistry,
+    peers::Peers,
+};
 
 /// A peer connection.
 #[derive(Debug)]
@@ -28,16 +34,16 @@ impl Peer {
     ) -> Result<Self> {
         let unique_name = match id {
             Some(id) => OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap(),
-            None => OwnedUniqueName::try_from("org.freedesktop.DBus").unwrap(),
+            None => OwnedUniqueName::try_from(fdo::BUS_NAME).unwrap(),
         };
         let dbus = DBus::new(unique_name.clone(), peers.clone(), guid.clone());
         let conn = ConnectionBuilder::socket(socket)
             .server(&guid)
             .p2p()
             .auth_mechanisms(&[auth_mechanism])
-            .unique_name("org.freedesktop.DBus")?
-            .name("org.freedesktop.DBus")?
-            .serve_at("/org/freedesktop/DBus", dbus)?
+            .unique_name(fdo::BUS_NAME)?
+            .name(fdo::BUS_NAME)?
+            .serve_at(fdo::DBUS_PATH, dbus)?
             .build()
             .await?;
         trace!("created: {:?}", conn);
@@ -57,8 +63,8 @@ impl Peer {
         &self.conn
     }
 
-    pub fn stream(&self) -> PeerStream {
-        PeerStream::for_peer(self)
+    pub fn stream(&self) -> Stream {
+        Stream::for_peer(self)
     }
 
     /// # Panics
@@ -125,9 +131,9 @@ impl Peer {
     }
 
     /// Remove the first rule that matches.
-    pub fn remove_match_rule(&mut self, rule: OwnedMatchRule) -> fdo::Result<()> {
+    pub fn remove_match_rule(&mut self, rule: OwnedMatchRule) -> zbus::fdo::Result<()> {
         if !self.match_rules.remove(&rule) {
-            return Err(fdo::Error::MatchRuleNotFound(
+            return Err(zbus::fdo::Error::MatchRuleNotFound(
                 "No such match rule".to_string(),
             ));
         }

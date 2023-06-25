@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use futures_util::{stream::StreamExt, SinkExt};
 use std::{
     collections::BTreeMap,
@@ -15,10 +15,9 @@ use zbus::{
 };
 
 use crate::{
-    fdo::DBus,
+    fdo::{self, DBus},
     name_registry::{NameOwnerChanged, NameRegistry},
-    peer::Peer,
-    peer_stream::PeerStream,
+    peer::{Peer, Stream},
 };
 
 #[derive(Debug)]
@@ -84,19 +83,15 @@ impl Peers {
         let new_owner = name_owner_changed.new_owner.map(UniqueName::from);
 
         // First broadcast the name change signal.
-        let msg = MessageBuilder::signal(
-            "/org/freedesktop/DBus",
-            "org.freedesktop.DBus",
-            "NameOwnerChanged",
-        )
-        .unwrap()
-        .sender("org.freedesktop.DBus")
-        .unwrap()
-        .build(&(
-            &name,
-            Optional::from(old_owner.clone()),
-            Optional::from(new_owner.clone()),
-        ))?;
+        let msg = MessageBuilder::signal(fdo::DBUS_PATH, fdo::DBUS_INTERFACE, "NameOwnerChanged")
+            .unwrap()
+            .sender(fdo::BUS_NAME)
+            .unwrap()
+            .build(&(
+                &name,
+                Optional::from(old_owner.clone()),
+                Optional::from(new_owner.clone()),
+            ))?;
         self.broadcast_msg(Arc::new(msg)).await;
 
         // Now unicast the appropriate signal to the old and new owners.
@@ -104,7 +99,7 @@ impl Peers {
         if let Some(old_owner) = old_owner {
             match peers.get(&*old_owner) {
                 Some(peer) => {
-                    let signal_ctxt = SignalContext::new(peer.conn(), "/org/freedesktop/DBus")
+                    let signal_ctxt = SignalContext::new(peer.conn(), fdo::DBUS_PATH)
                         .unwrap()
                         .set_destination(old_owner.into());
                     DBus::name_lost(&signal_ctxt, name.clone()).await?;
@@ -117,7 +112,7 @@ impl Peers {
         if let Some(new_owner) = new_owner {
             match peers.get(&*new_owner) {
                 Some(peer) => {
-                    let signal_ctxt = SignalContext::new(peer.conn(), "/org/freedesktop/DBus")
+                    let signal_ctxt = SignalContext::new(peer.conn(), fdo::DBUS_PATH)
                         .unwrap()
                         .set_destination(new_owner.into());
                     DBus::name_acquired(&signal_ctxt, name.clone()).await?;
@@ -133,7 +128,7 @@ impl Peers {
 
     async fn serve_peer(
         self: Arc<Self>,
-        mut peer_stream: PeerStream,
+        mut peer_stream: Stream,
         unique_name: OwnedUniqueName,
     ) -> Result<()> {
         while let Some(msg) = peer_stream.next().await {
@@ -154,7 +149,7 @@ impl Peers {
                             warn!("{}", e);
                         }
                     }
-                    // PeerStream ensures a valid destination so this isn't exactly needed.
+                    // peer::Stream ensures a valid destination so this isn't exactly needed.
                     _ => bail!("invalid message: {:?}", msg),
                 },
             };
@@ -165,7 +160,7 @@ impl Peers {
         let names_changes = self
             .name_registry_mut()
             .await
-            .release_all(unique_name.clone())
+            .release_all(unique_name.inner().clone())
             .await;
         for changed in names_changes {
             self.notify_name_changes(changed).await?;
@@ -191,9 +186,7 @@ impl Peers {
             BusName::WellKnown(name) => {
                 let dest = match self.name_registry().await.lookup(name.clone()) {
                     Some(dest) => dest,
-                    None => {
-                        return Err(anyhow!("unknown destination: {}", name));
-                    }
+                    None => bail!("unknown destination: {}", name),
                 };
                 self.send_msg_to_unique_name(msg, (&*dest).into()).await
             }
