@@ -12,9 +12,7 @@ use zbus::{
     fdo::{
         ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
     },
-    names::{
-        BusName, OwnedBusName, OwnedInterfaceName, OwnedUniqueName, UniqueName, WellKnownName,
-    },
+    names::{BusName, InterfaceName, OwnedBusName, OwnedUniqueName, UniqueName, WellKnownName},
     zvariant::{Optional, Signature, Type},
     Guid, OwnedMatchRule, SignalContext,
 };
@@ -253,12 +251,12 @@ impl DBus {
     }
 
     /// Gets the unique ID of the bus.
-    fn get_id(&self) -> Arc<Guid> {
-        self.guid.clone()
+    fn get_id(&self) -> &Guid {
+        &self.guid
     }
 
     /// Returns a list of all names that can be activated on the bus.
-    fn list_activatable_names(&self) -> &'static [OwnedBusName] {
+    fn list_activatable_names(&self) -> &[OwnedBusName] {
         // TODO: Return actual list when we support service activation.
         &[]
     }
@@ -333,6 +331,14 @@ impl DBus {
         ))
     }
 
+    /// Easter egg method.
+    fn dune(&self) -> &str {
+        "I must not fear. Fear is the mind-killer. Fear is the little-death that brings total \
+        obliteration. I will face my fear. I will permit it to pass over me and through me. And \
+        when it has gone past I will turn the inner eye to see its path. Where the fear has gone \
+        there will be nothing. Only **I** will remain!"
+    }
+
     //
     // Propertries
     //
@@ -340,7 +346,7 @@ impl DBus {
     /// This property lists abstract “features” provided by the message bus, and can be used by
     /// clients to detect the capabilities of the message bus with which they are communicating.
     #[dbus_interface(property)]
-    fn features(&self) -> &'static [String] {
+    fn features(&self) -> &[&str] {
         &[]
     }
 
@@ -357,7 +363,7 @@ impl DBus {
     /// `org.freedesktop.DBus.Introspectable` interfaces are not included in the value of this
     /// property either, because they do not indicate features of the message bus implementation.
     #[dbus_interface(property)]
-    fn interfaces(&self) -> &'static [OwnedInterfaceName] {
+    fn interfaces(&self) -> &[InterfaceName<'_>] {
         // TODO: List `org.freedesktop.DBus.Monitoring` when we support it.
         &[]
     }
