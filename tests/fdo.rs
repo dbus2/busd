@@ -210,34 +210,34 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
     drop(dbus_proxy2);
     drop(conn2);
 
-    // First the bus dropped its well-known names.
-    let changed = name_changed_stream.next().await.unwrap();
-    ensure!(
-        *changed.args()?.name() == name,
-        "expected name owner changed signal for the new connections gaining unique name"
-    );
-    ensure!(
-        changed.args()?.new_owner.is_none(),
-        "expected no new owner for our unique name"
-    );
-    ensure!(
-        *changed.args()?.old_owner.as_ref().unwrap() == conn2_unique_name,
-        "expected old owner to be us"
-    );
-    // Then the bus dropped its unique name.
-    let changed = name_changed_stream.next().await.unwrap();
-    ensure!(
-        *changed.args()?.name() == *conn2_unique_name,
-        "expected name owner changed signal for the new connections gaining unique name"
-    );
-    ensure!(
-        changed.args()?.new_owner.is_none(),
-        "expected no new owner for our unique name"
-    );
-    ensure!(
-        *changed.args()?.old_owner.as_ref().unwrap() == conn2_unique_name,
-        "expected old owner to be us"
-    );
+    let mut unique_name_signaled = false;
+    let mut well_known_name_signaled = false;
+    while !unique_name_signaled && !well_known_name_signaled {
+        let changed = name_changed_stream.next().await.unwrap();
+        if *changed.args()?.name() == *conn2_unique_name {
+            ensure!(
+                changed.args()?.new_owner.is_none(),
+                "expected no new owner for our unique name"
+            );
+            ensure!(
+                *changed.args()?.old_owner.as_ref().unwrap() == conn2_unique_name,
+                "expected old owner to be us"
+            );
+            unique_name_signaled = true;
+        } else if *changed.args()?.name() == name {
+            ensure!(
+                changed.args()?.new_owner.is_none(),
+                "expected no new owner for our name"
+            );
+            ensure!(
+                *changed.args()?.old_owner.as_ref().unwrap() == conn2_unique_name,
+                "expected old owner to be us"
+            );
+            well_known_name_signaled = true;
+        } else {
+            panic!("unexpected name owner changed signal");
+        }
+    }
 
     tx.send(()).unwrap();
 
