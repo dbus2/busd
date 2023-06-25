@@ -82,9 +82,14 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         "expected to become primary owner"
     );
     // Ensure signals were emitted.
-    let changed = name_changed_stream.next().await.unwrap();
+    let mut changed = name_changed_stream.next().await.unwrap();
+    if *changed.args()?.name() == *conn_unique_name {
+        // In case we do happen to get the signal for our unique name, well-known name signal should
+        // be next.
+        changed = name_changed_stream.next().await.unwrap();
+    }
     ensure!(
-        *changed.args()?.name() == name || *changed.args()?.name() == *conn_unique_name,
+        *changed.args()?.name() == name,
         "expected name owner changed signal for our name"
     );
     ensure!(
