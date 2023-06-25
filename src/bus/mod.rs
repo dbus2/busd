@@ -9,7 +9,9 @@ use std::{
     path::{Path, PathBuf},
 };
 use std::{str::FromStr, sync::Arc};
-use tokio::{fs::remove_file, spawn};
+#[cfg(unix)]
+use tokio::fs::remove_file;
+use tokio::spawn;
 use tracing::{debug, info, trace, warn};
 use zbus::{Address, AuthMechanism, Connection, ConnectionBuilder, Guid, Socket, TcpAddress};
 
