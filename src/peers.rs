@@ -15,7 +15,7 @@ use zbus::{
 };
 
 use crate::{
-    fdo::DBus,
+    fdo::{self, DBus},
     name_registry::{NameOwnerChanged, NameRegistry},
     peer::{Peer, Stream},
 };
@@ -83,19 +83,15 @@ impl Peers {
         let new_owner = name_owner_changed.new_owner.map(UniqueName::from);
 
         // First broadcast the name change signal.
-        let msg = MessageBuilder::signal(
-            "/org/freedesktop/DBus",
-            "org.freedesktop.DBus",
-            "NameOwnerChanged",
-        )
-        .unwrap()
-        .sender("org.freedesktop.DBus")
-        .unwrap()
-        .build(&(
-            &name,
-            Optional::from(old_owner.clone()),
-            Optional::from(new_owner.clone()),
-        ))?;
+        let msg = MessageBuilder::signal(fdo::DBUS_PATH, fdo::DBUS_INTERFACE, "NameOwnerChanged")
+            .unwrap()
+            .sender(fdo::BUS_NAME)
+            .unwrap()
+            .build(&(
+                &name,
+                Optional::from(old_owner.clone()),
+                Optional::from(new_owner.clone()),
+            ))?;
         self.broadcast_msg(Arc::new(msg)).await;
 
         // Now unicast the appropriate signal to the old and new owners.
@@ -103,7 +99,7 @@ impl Peers {
         if let Some(old_owner) = old_owner {
             match peers.get(&*old_owner) {
                 Some(peer) => {
-                    let signal_ctxt = SignalContext::new(peer.conn(), "/org/freedesktop/DBus")
+                    let signal_ctxt = SignalContext::new(peer.conn(), fdo::DBUS_PATH)
                         .unwrap()
                         .set_destination(old_owner.into());
                     DBus::name_lost(&signal_ctxt, name.clone()).await?;
@@ -116,7 +112,7 @@ impl Peers {
         if let Some(new_owner) = new_owner {
             match peers.get(&*new_owner) {
                 Some(peer) => {
-                    let signal_ctxt = SignalContext::new(peer.conn(), "/org/freedesktop/DBus")
+                    let signal_ctxt = SignalContext::new(peer.conn(), fdo::DBUS_PATH)
                         .unwrap()
                         .set_destination(new_owner.into());
                     DBus::name_acquired(&signal_ctxt, name.clone()).await?;

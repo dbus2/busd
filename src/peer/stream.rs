@@ -10,7 +10,7 @@ use zbus::{
     MessageType,
 };
 
-use crate::peer::Peer;
+use crate::{fdo::BUS_NAME, peer::Peer};
 
 /// Message stream for a peer.
 ///
@@ -33,9 +33,7 @@ impl Stream {
             .try_filter(|msg| match msg.fields() {
                 // Messages to the Bus will be hanled by our ObjectServer.
                 Ok(fields) => match fields.get_field(MessageFieldCode::Destination) {
-                    Some(MessageField::Destination(d)) if d.starts_with("org.freedesktop.DBus") => {
-                        ready(false)
-                    }
+                    Some(MessageField::Destination(d)) if d.starts_with(BUS_NAME) => ready(false),
                     _ => ready(true),
                 },
                 Err(_) => ready(true),

@@ -21,6 +21,10 @@ use zbus::{
 
 use crate::{name_registry::NameOwnerChanged, peer::Peer, peers::Peers};
 
+pub const BUS_NAME: &str = "org.freedesktop.DBus";
+pub const DBUS_PATH: &str = "/org/freedesktop/DBus";
+pub const DBUS_INTERFACE: &str = "org.freedesktop.DBus";
+
 #[derive(Debug)]
 pub(super) struct DBus {
     unique_name: OwnedUniqueName,
@@ -146,7 +150,7 @@ impl DBus {
 
     /// Returns the unique connection name of the primary owner of the name given.
     async fn get_name_owner(&self, name: BusName<'_>) -> Result<OwnedUniqueName> {
-        if name == "org.freedesktop.DBus" {
+        if name == BUS_NAME {
             return Ok(self.unique_name.clone());
         }
 
@@ -262,7 +266,7 @@ impl DBus {
     /// Returns a list of all currently-owned names on the bus.
     async fn list_names(&self) -> Result<Vec<OwnedBusName>> {
         let peers = self.peers()?;
-        let mut names = vec!["org.freedesktop.DBus".try_into().unwrap()];
+        let mut names = vec![BUS_NAME.try_into().unwrap()];
         names.extend(
             peers
                 .peers()
