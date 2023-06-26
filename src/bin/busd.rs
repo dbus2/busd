@@ -52,6 +52,14 @@ struct ConfigArg {
     /// The configuration file.
     #[clap(long, value_parser)]
     config_file: Option<String>,
+
+    /// Use the standard configuration file for the per-login-session message bus.
+    #[clap(long, value_parser)]
+    session: bool,
+
+    /// Use the standard configuration file for the system-wide message bus.
+    #[clap(long, value_parser)]
+    system: bool,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -81,7 +89,19 @@ impl From<AuthMechanism> for zbus::AuthMechanism {
 async fn main() -> Result<()> {
     busd::tracing_subscriber::init();
 
-    let args = BusdArgs::parse();
+    let mut args = BusdArgs::parse();
+
+    // let's make --session the default
+    if !args.config.session && !args.config.system && args.config.config_file.is_none() {
+        args.config.session = true;
+    }
+    // FIXME: make default config configurable or OS dependant
+    if args.config.session {
+        args.config.config_file = Some("/usr/share/dbus-1/session.conf".into());
+    }
+    if args.config.system {
+        args.config.config_file = Some("/usr/share/dbus-1/system.conf".into());
+    }
 
     let mut config = BusConfig::default();
     if let Some(file) = args.config.config_file {
