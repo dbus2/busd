@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Error, Result};
 use rand::Rng;
 #[cfg(unix)]
 use std::{fs::Permissions, os::unix::prelude::PermissionsExt};
@@ -12,13 +12,43 @@ use tokio::fs::set_permissions;
 use tokio::{
     fs::{create_dir_all, metadata, remove_file, rename, File, OpenOptions},
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    sync::oneshot::{self, Receiver},
+    task::JoinHandle,
     time::sleep,
 };
 use tracing::{debug, info, instrument, trace, warn};
 use xdg_home::home_dir;
 
+/// Run the cookie sync task.
+///
+/// Returns a handle to the task and a receiver that will be signaled when initial sync completes.
 #[instrument]
-pub(super) async fn sync() -> Result<()> {
+pub(super) fn run_sync() -> (JoinHandle<Error>, Receiver<()>) {
+    let (tx, rx) = oneshot::channel();
+    (
+        tokio::spawn(async move {
+            // Initial sync.
+            if let Err(e) = sync().await {
+                return e;
+            }
+            if tx.send(()).is_err() {
+                return anyhow!("Failed to send cookie sync completion signal.");
+            }
+
+            loop {
+                // No need to sync unitl another 3 minutes.
+                sleep(Duration::from_secs(3 * 60)).await;
+
+                if let Err(e) = sync().await {
+                    break e;
+                }
+            }
+        }),
+        rx,
+    )
+}
+
+async fn sync() -> Result<()> {
     let cookie_dir_path = home_dir().unwrap().join(".dbus-keyrings");
 
     // Ensure the cookie directory exists and has the correct permissions.
@@ -82,7 +112,7 @@ pub(super) async fn sync() -> Result<()> {
     };
 
     trace!("Reading cookies file `{}`..", cookie_path.display());
-    let (mut cookies, mut changed) = match open_options
+    let (mut cookies, mut changed, new_cookie_needed) = match open_options
         // Reset options only needed for the lock file.
         .write(false)
         .create_new(false)
