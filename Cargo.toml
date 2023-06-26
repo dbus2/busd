@@ -23,7 +23,7 @@ path = "src/bin/busd.rs"
 #zbus = { git = "https://github.com/dbus2/zbus/", features = ["tokio"], default-features = false }
 zbus = { version = "3.14.1", features = ["tokio"], default-features = false }
 tokio = { version = "1.19.2", features = ["macros", "rt-multi-thread", "signal", "tracing", "fs" ] }
-clap = { version = "4.0.18", features = ["derive"] }
+clap = { version = "4.3", features = ["derive"] }
 tracing = "0.1.34"
 tracing-subscriber = { version = "0.3.11", features = ["env-filter" , "fmt", "ansi"], default-features = false, optional = true }
 anyhow = "1.0.58"
