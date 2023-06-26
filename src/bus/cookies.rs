@@ -92,12 +92,12 @@ pub(super) async fn sync() -> Result<()> {
         .await
     {
         Ok(cookies_file) => load_cookies(cookies_file).await?,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => (vec![], true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => (vec![], true, true),
         Err(e) => Err(e)?,
     };
 
-    if cookies.is_empty() {
-        trace!("Out of cookies. Creating a new one..");
+    if new_cookie_needed {
+        trace!("Creating a new cookie (🍪)..");
         // No cookies left, let's add one then.
         let mut rng = rand::thread_rng();
         let mut cookie_bytes = [0u8; 32];
@@ -108,7 +108,7 @@ pub(super) async fn sync() -> Result<()> {
             cookie: hex::encode(cookie_bytes),
         };
         trace!("Created cookie with ID `{}`.", cookie.id);
-        cookies.push(cookie);
+        cookies.insert(0, cookie);
         changed = true;
     }
 
@@ -202,11 +202,12 @@ const COOKIE_CONTEXT: &str = "org_freedesktop_general";
 ///
 /// Returns a tuple of the cookies and a boolean indicating if any cookies were filtered out.
 #[instrument]
-async fn load_cookies(cookies_file: File) -> Result<(Vec<Cookie>, bool)> {
+async fn load_cookies(cookies_file: File) -> Result<(Vec<Cookie>, bool, bool)> {
     trace!("Loading cookies..");
     let mut cookies = vec![];
     let mut lines = BufReader::new(cookies_file).lines();
     let mut filtered = false;
+    let mut n_about_to_expire = 0;
     while let Some(line) = lines.next_line().await? {
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         let cookie = match Cookie::from_str(&line) {
@@ -232,11 +233,26 @@ async fn load_cookies(cookies_file: File) -> Result<(Vec<Cookie>, bool)> {
 
                 continue;
             }
-            Ok(cookie) => cookie,
+            Ok(cookie) => {
+                // The cookie is about to expire.
+                if cookie.created < now - 4 * 60 {
+                    n_about_to_expire += 1;
+                }
+                cookie
+            }
         };
         cookies.push(cookie);
     }
     trace!("Loaded {} cookies.", cookies.len());
+    let new_cookie_needed = if n_about_to_expire == cookies.len() {
+        trace!("All cookies are about to expire.");
+        true
+    } else if cookies.is_empty() {
+        trace!("Out of cookies. ∅🍪");
+        true
+    } else {
+        false
+    };
 
-    Ok((cookies, filtered))
+    Ok((cookies, filtered, new_cookie_needed))
 }
