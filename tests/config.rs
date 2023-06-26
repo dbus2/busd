@@ -1,6 +1,5 @@
 use busd::config::{BusConfig, Element};
-use std::error::Error;
-use std::path::PathBuf;
+use std::{error::Error, path::PathBuf};
 
 #[test]
 fn test_se() -> Result<(), Box<dyn Error>> {

@@ -32,9 +32,7 @@ async fn multi_conenct() {
 }
 
 async fn multi_conenct_(socket_addr: &str, auth_mechanism: AuthMechanism) {
-    let mut bus = Bus::for_address(Some(socket_addr), auth_mechanism)
-        .await
-        .unwrap();
+    let mut bus = Bus::for_address(socket_addr, auth_mechanism).await.unwrap();
     let (tx, rx) = channel();
 
     let handle = tokio::spawn(async move {

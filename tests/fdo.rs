@@ -38,9 +38,7 @@ async fn name_ownership_changes() {
 }
 
 async fn name_ownership_changes_(address: &str, auth_mechanism: AuthMechanism) {
-    let mut bus = Bus::for_address(Some(address), auth_mechanism)
-        .await
-        .unwrap();
+    let mut bus = Bus::for_address(address, auth_mechanism).await.unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     let handle = tokio::spawn(async move {

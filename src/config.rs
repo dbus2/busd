@@ -1,5 +1,7 @@
-use std::fmt::Write;
-use std::path::{Path, PathBuf};
+use std::{
+    fmt::Write,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{bail, Context};
 use serde::{Deserialize, Serialize};
