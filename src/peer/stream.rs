@@ -60,7 +60,8 @@ impl Stream {
                         }
                     }
 
-                    // Ensure sender field is present. If it is not we add it using the unique name of the peer.
+                    // Ensure sender field is present. If it is not we add it using the unique name
+                    // of the peer.
                     match fields.get_field(MessageFieldCode::Sender) {
                         Some(MessageField::Sender(sender)) if *sender == unique_name => Ok(msg),
                         Some(_) => bail!("failed to parse message: Invalid sender field"),
