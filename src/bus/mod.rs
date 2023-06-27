@@ -1,17 +1,19 @@
 mod cookies;
 
-use anyhow::{bail, Ok, Result};
-use clap::__macro_refs::once_cell::sync::OnceCell;
-use futures_util::{try_join, TryFutureExt};
+use anyhow::{bail, Error, Ok, Result};
+use futures_util::{
+    future::{select, Either},
+    pin_mut, try_join, TryFutureExt,
+};
+use std::{cell::OnceCell, str::FromStr, sync::Arc};
 #[cfg(unix)]
 use std::{
     env,
     path::{Path, PathBuf},
 };
-use std::{str::FromStr, sync::Arc};
 #[cfg(unix)]
 use tokio::fs::remove_file;
-use tokio::spawn;
+use tokio::{spawn, task::JoinHandle};
 use tracing::{debug, info, trace, warn};
 use zbus::{Address, AuthMechanism, Connection, ConnectionBuilder, Guid, Socket, TcpAddress};
 
@@ -22,6 +24,7 @@ use crate::peers::Peers;
 pub struct Bus {
     inner: Inner,
     listener: Listener,
+    cookie_task: Option<JoinHandle<Error>>,
 }
 
 // All (cheaply) cloneable fields of `Bus` go here.
@@ -102,9 +105,18 @@ impl Bus {
         }
     }
 
-    fn new(listener: Listener, auth_mechanism: AuthMechanism) -> Self {
-        Self {
+    async fn new(listener: Listener, auth_mechanism: AuthMechanism) -> Result<Self> {
+        let cookie_task = if auth_mechanism == AuthMechanism::Cookie {
+            let (cookie_task, cookie_sync_rx) = cookies::run_sync();
+            cookie_sync_rx.await?;
+
+            Some(cookie_task)
+        } else {
+            None
+        };
+        Ok(Self {
             listener,
+            cookie_task,
             inner: Inner {
                 peers: Peers::new(),
                 guid: Arc::new(Guid::generate()),
@@ -112,7 +124,7 @@ impl Bus {
                 auth_mechanism,
                 self_conn: OnceCell::new(),
             },
-        }
+        })
     }
 
     #[cfg(unix)]
@@ -123,7 +135,7 @@ impl Bus {
             socket_path,
         };
 
-        Ok(Self::new(listener, auth_mechanism))
+        Self::new(listener, auth_mechanism).await
     }
 
     async fn tcp_stream(address: &TcpAddress, auth_mechanism: AuthMechanism) -> Result<Self> {
@@ -132,11 +144,25 @@ impl Bus {
             listener: tokio::net::TcpListener::bind(address).await?,
         };
 
-        Ok(Self::new(listener, auth_mechanism))
+        Self::new(listener, auth_mechanism).await
     }
 
     async fn accept_next(&mut self) -> Result<()> {
-        let socket = self.accept().await?;
+        let task = self.cookie_task.take();
+
+        let (socket, task) = match task {
+            Some(task) => {
+                let accept_fut = self.accept();
+                pin_mut!(accept_fut);
+
+                match select(accept_fut, task).await {
+                    Either::Left((socket, task)) => (socket?, Some(task)),
+                    Either::Right((e, _)) => return Err(e?),
+                }
+            }
+            None => (self.accept().await?, None),
+        };
+        self.cookie_task = task;
 
         let id = self.next_id();
         let inner = self.inner.clone();
@@ -155,9 +181,6 @@ impl Bus {
     }
 
     async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
-        if self.auth_mechanism() == AuthMechanism::Cookie {
-            cookies::sync().await?;
-        }
         match &mut self.listener {
             #[cfg(unix)]
             Listener::Unix {

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Error, Result};
 use rand::Rng;
 #[cfg(unix)]
 use std::{fs::Permissions, os::unix::prelude::PermissionsExt};
@@ -12,13 +12,43 @@ use tokio::fs::set_permissions;
 use tokio::{
     fs::{create_dir_all, metadata, remove_file, rename, File, OpenOptions},
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    sync::oneshot::{self, Receiver},
+    task::JoinHandle,
     time::sleep,
 };
 use tracing::{debug, info, instrument, trace, warn};
 use xdg_home::home_dir;
 
+/// Run the cookie sync task.
+///
+/// Returns a handle to the task and a receiver that will be signaled when initial sync completes.
 #[instrument]
-pub(super) async fn sync() -> Result<()> {
+pub(super) fn run_sync() -> (JoinHandle<Error>, Receiver<()>) {
+    let (tx, rx) = oneshot::channel();
+    (
+        tokio::spawn(async move {
+            // Initial sync.
+            if let Err(e) = sync().await {
+                return e;
+            }
+            if tx.send(()).is_err() {
+                return anyhow!("Failed to send cookie sync completion signal.");
+            }
+
+            loop {
+                // No need to sync unitl another 3 minutes.
+                sleep(Duration::from_secs(3 * 60)).await;
+
+                if let Err(e) = sync().await {
+                    break e;
+                }
+            }
+        }),
+        rx,
+    )
+}
+
+async fn sync() -> Result<()> {
     let cookie_dir_path = home_dir().unwrap().join(".dbus-keyrings");
 
     // Ensure the cookie directory exists and has the correct permissions.
@@ -82,7 +112,7 @@ pub(super) async fn sync() -> Result<()> {
     };
 
     trace!("Reading cookies file `{}`..", cookie_path.display());
-    let (mut cookies, mut changed) = match open_options
+    let (mut cookies, mut changed, new_cookie_needed) = match open_options
         // Reset options only needed for the lock file.
         .write(false)
         .create_new(false)
@@ -92,12 +122,12 @@ pub(super) async fn sync() -> Result<()> {
         .await
     {
         Ok(cookies_file) => load_cookies(cookies_file).await?,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => (vec![], true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => (vec![], true, true),
         Err(e) => Err(e)?,
     };
 
-    if cookies.is_empty() {
-        trace!("Out of cookies. Creating a new one..");
+    if new_cookie_needed {
+        trace!("Creating a new cookie (🍪)..");
         // No cookies left, let's add one then.
         let mut rng = rand::thread_rng();
         let mut cookie_bytes = [0u8; 32];
@@ -108,7 +138,7 @@ pub(super) async fn sync() -> Result<()> {
             cookie: hex::encode(cookie_bytes),
         };
         trace!("Created cookie with ID `{}`.", cookie.id);
-        cookies.push(cookie);
+        cookies.insert(0, cookie);
         changed = true;
     }
 
@@ -202,11 +232,12 @@ const COOKIE_CONTEXT: &str = "org_freedesktop_general";
 ///
 /// Returns a tuple of the cookies and a boolean indicating if any cookies were filtered out.
 #[instrument]
-async fn load_cookies(cookies_file: File) -> Result<(Vec<Cookie>, bool)> {
+async fn load_cookies(cookies_file: File) -> Result<(Vec<Cookie>, bool, bool)> {
     trace!("Loading cookies..");
     let mut cookies = vec![];
     let mut lines = BufReader::new(cookies_file).lines();
     let mut filtered = false;
+    let mut n_about_to_expire = 0;
     while let Some(line) = lines.next_line().await? {
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         let cookie = match Cookie::from_str(&line) {
@@ -232,11 +263,26 @@ async fn load_cookies(cookies_file: File) -> Result<(Vec<Cookie>, bool)> {
 
                 continue;
             }
-            Ok(cookie) => cookie,
+            Ok(cookie) => {
+                // The cookie is about to expire.
+                if cookie.created < now - 4 * 60 {
+                    n_about_to_expire += 1;
+                }
+                cookie
+            }
         };
         cookies.push(cookie);
     }
     trace!("Loaded {} cookies.", cookies.len());
+    let new_cookie_needed = if n_about_to_expire == cookies.len() {
+        trace!("All cookies are about to expire.");
+        true
+    } else if cookies.is_empty() {
+        trace!("Out of cookies. ∅🍪");
+        true
+    } else {
+        false
+    };
 
-    Ok((cookies, filtered))
+    Ok((cookies, filtered, new_cookie_needed))
 }
