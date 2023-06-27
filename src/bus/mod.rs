@@ -185,16 +185,19 @@ impl Bus {
             #[cfg(unix)]
             Listener::Unix {
                 listener,
-                socket_path: _,
+                socket_path,
             } => {
-                let (unix_stream, addr) = listener.accept().await?;
-                debug!("Accepted connection from {:?}", addr);
+                let (unix_stream, _) = listener.accept().await?;
+                debug!(
+                    "Accepted connection on socket file {}",
+                    socket_path.display()
+                );
 
                 Ok(Box::new(unix_stream))
             }
             Listener::Tcp { listener } => {
                 let (tcp_stream, addr) = listener.accept().await?;
-                debug!("Accepted connection from {:?}", addr);
+                debug!("Accepted connection from {addr}");
 
                 Ok(Box::new(tcp_stream))
             }
