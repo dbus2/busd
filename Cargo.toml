@@ -2,7 +2,7 @@
 name = "busd"
 version = "0.1.0"
 authors = ["Zeeshan Ali Khan <zeeshanak@gnome.org>"]
-description = "A simple D-Bus bus (broker) implementation"
+description = "A D-Bus bus (broker) implementation"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
