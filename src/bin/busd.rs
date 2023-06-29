@@ -18,6 +18,10 @@ struct Args {
     #[clap(short = 'a', long, value_parser)]
     address: Option<String>,
 
+    /// Print the address of the message bus to standard output.
+    #[clap(long)]
+    print_address: bool,
+
     /// The authentication mechanism to use.
     #[clap(long)]
     #[arg(value_enum, default_value_t = AuthMechanism::External)]
@@ -55,6 +59,10 @@ async fn main() -> Result<()> {
 
     let mut bus =
         bus::Bus::for_address(args.address.as_deref(), args.auth_mechanism.into()).await?;
+
+    if args.print_address {
+        println!("{},guid={}", bus.address(), bus.guid());
+    }
 
     // FIXME: How to handle this gracefully on Windows?
     #[cfg(unix)]

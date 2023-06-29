@@ -2,7 +2,7 @@
 name = "busd"
 version = "0.1.0"
 authors = ["Zeeshan Ali Khan <zeeshanak@gnome.org>"]
-description = "A simple D-Bus bus (broker) implementation"
+description = "A D-Bus bus (broker) implementation"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -20,9 +20,8 @@ name = "busd"
 path = "src/bin/busd.rs"
 
 [dependencies]
-zbus = { git = "https://github.com/dbus2/zbus/", features = ["tokio"], default-features = false }
-#zbus = { version = "3.4.0", features = ["tokio"], default-features = false }
-nix = "0.25.0"
+#zbus = { git = "https://github.com/dbus2/zbus/", features = ["tokio"], default-features = false }
+zbus = { version = "3.14.1", features = ["tokio"], default-features = false }
 tokio = { version = "1.19.2", features = ["macros", "rt-multi-thread", "signal", "tracing", "fs" ] }
 clap = { version = "4.0.18", features = ["derive"] }
 tracing = "0.1.34"
@@ -37,6 +36,9 @@ console-subscriber = { version = "0.1.8", optional = true }
 hex = "0.4.3"
 xdg-home = "1.0.0"
 rand = "0.8.5"
+
+[target.'cfg(unix)'.dependencies]
+nix = "0.26.0"
 
 [features]
 default = ["tracing-subscriber"]

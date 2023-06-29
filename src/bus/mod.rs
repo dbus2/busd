@@ -30,6 +30,7 @@ pub struct Bus {
 // All (cheaply) cloneable fields of `Bus` go here.
 #[derive(Clone, Debug)]
 pub struct Inner {
+    address: Address,
     peers: Arc<Peers>,
     guid: Arc<Guid>,
     next_id: Option<usize>,
@@ -56,23 +57,25 @@ impl Bus {
             None => default_address(),
         };
         let address = Address::from_str(&address)?;
-        let mut bus = match &address {
+        let listener = match &address {
             #[cfg(unix)]
             Address::Unix(path) => {
                 let path = Path::new(&path);
                 info!("Listening on {}.", path.display());
 
-                Self::unix_stream(path, auth_mechanism).await
+                Self::unix_stream(path).await
             }
             Address::Tcp(address) => {
                 info!("Listening on `{}:{}`.", address.host(), address.port());
 
-                Self::tcp_stream(address, auth_mechanism).await
+                Self::tcp_stream(address).await
             }
             Address::NonceTcp { .. } => bail!("`nonce-tcp` transport is not supported (yet)."),
             Address::Autolaunch(_) => bail!("`autolaunch` transport is not supported (yet)."),
             _ => bail!("Unsupported address `{}`.", address),
         }?;
+
+        let mut bus = Self::new(address.clone(), listener, auth_mechanism).await?;
 
         // Create a peer for ourselves.
         trace!("Creating self-dial connection.");
@@ -86,6 +89,10 @@ impl Bus {
         trace!("Self-dial connection created.");
 
         Ok(bus)
+    }
+
+    pub fn address(&self) -> &Address {
+        &self.inner.address
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -105,7 +112,11 @@ impl Bus {
         }
     }
 
-    async fn new(listener: Listener, auth_mechanism: AuthMechanism) -> Result<Self> {
+    async fn new(
+        address: Address,
+        listener: Listener,
+        auth_mechanism: AuthMechanism,
+    ) -> Result<Self> {
         let cookie_task = if auth_mechanism == AuthMechanism::Cookie {
             let (cookie_task, cookie_sync_rx) = cookies::run_sync();
             cookie_sync_rx.await?;
@@ -118,6 +129,7 @@ impl Bus {
             listener,
             cookie_task,
             inner: Inner {
+                address,
                 peers: Peers::new(),
                 guid: Arc::new(Guid::generate()),
                 next_id: None,
@@ -128,23 +140,23 @@ impl Bus {
     }
 
     #[cfg(unix)]
-    async fn unix_stream(socket_path: &Path, auth_mechanism: AuthMechanism) -> Result<Self> {
+    async fn unix_stream(socket_path: &Path) -> Result<Listener> {
         let socket_path = socket_path.to_path_buf();
         let listener = Listener::Unix {
             listener: tokio::net::UnixListener::bind(&socket_path)?,
             socket_path,
         };
 
-        Self::new(listener, auth_mechanism).await
+        Ok(listener)
     }
 
-    async fn tcp_stream(address: &TcpAddress, auth_mechanism: AuthMechanism) -> Result<Self> {
+    async fn tcp_stream(address: &TcpAddress) -> Result<Listener> {
         let address = (address.host(), address.port());
         let listener = Listener::Tcp {
             listener: tokio::net::TcpListener::bind(address).await?,
         };
 
-        Self::new(listener, auth_mechanism).await
+        Ok(listener)
     }
 
     async fn accept_next(&mut self) -> Result<()> {

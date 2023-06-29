@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Error, Result};
+use anyhow::{anyhow, Error, Result};
 use rand::Rng;
 #[cfg(unix)]
 use std::{fs::Permissions, os::unix::prelude::PermissionsExt};
@@ -57,7 +57,7 @@ async fn sync() -> Result<()> {
         Ok(metadata) => {
             let mode = metadata.permissions().mode();
             if mode & 0o077 != 0 {
-                bail!(
+                anyhow::bail!(
                     "Invalid permissions on the cookie directory `{}`.",
                     cookie_dir_path.display(),
                 );
