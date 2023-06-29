@@ -20,8 +20,8 @@ name = "busd"
 path = "src/bin/busd.rs"
 
 [dependencies]
-zbus = { git = "https://github.com/dbus2/zbus/", features = ["tokio"], default-features = false }
-#zbus = { version = "3.4.0", features = ["tokio"], default-features = false }
+#zbus = { git = "https://github.com/dbus2/zbus/", features = ["tokio"], default-features = false }
+zbus = { version = "3.14.1", features = ["tokio"], default-features = false }
 nix = "0.25.0"
 tokio = { version = "1.19.2", features = ["macros", "rt-multi-thread", "signal", "tracing", "fs" ] }
 clap = { version = "4.0.18", features = ["derive"] }
