@@ -46,7 +46,7 @@ impl Stream {
                         | MessageType::MethodReturn
                         | MessageType::Error
                         | MessageType::Signal => msg.fields()?,
-                        MessageType::Invalid => todo!(),
+                        MessageType::Invalid => bail!("Invalid message"),
                     };
 
                     // Ensure destination field is present for non-signals and readable.
