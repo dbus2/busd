@@ -7,7 +7,7 @@ use zbus::{
     },
 };
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct NameRegistry {
     names: HashMap<OwnedWellKnownName, NameEntry>,
 }
