@@ -216,7 +216,7 @@ impl Peers {
         trace!("Broadcasting message: {:?}", msg);
         let name_registry = self.name_registry().await;
         for peer in self.peers.read().await.values() {
-            if !peer.interested(&msg, &name_registry).await {
+            if !peer.interested(&msg, &name_registry) {
                 trace!("Peer {} not interested in {msg:?}", peer.unique_name());
                 continue;
             }

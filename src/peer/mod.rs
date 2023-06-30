@@ -70,7 +70,7 @@ impl Peer {
     /// # Panics
     ///
     /// if header, SENDER or DESTINATION is not set.
-    pub async fn interested(&self, msg: &zbus::Message, name_registry: &NameRegistry) -> bool {
+    pub fn interested(&self, msg: &zbus::Message, name_registry: &NameRegistry) -> bool {
         let hdr = msg.header().expect("received message without header");
 
         let ret = self.match_rules.iter().any(|rule| {
