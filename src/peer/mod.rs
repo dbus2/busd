@@ -1,17 +1,18 @@
 mod stream;
 pub use stream::*;
 
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Result;
 use tracing::trace;
 use zbus::{
-    names::{BusName, OwnedUniqueName},
-    AuthMechanism, Connection, ConnectionBuilder, Guid, OwnedMatchRule, Socket,
+    names::OwnedUniqueName, AuthMechanism, Connection, ConnectionBuilder, Guid, OwnedMatchRule,
+    Socket,
 };
 
 use crate::{
     fdo::{self, DBus},
+    match_rules::MatchRules,
     name_registry::NameRegistry,
     peers::Peers,
 };
@@ -21,7 +22,7 @@ use crate::{
 pub struct Peer {
     conn: Connection,
     unique_name: OwnedUniqueName,
-    match_rules: HashSet<OwnedMatchRule>,
+    match_rules: MatchRules,
 }
 
 impl Peer {
@@ -51,7 +52,7 @@ impl Peer {
         Ok(Self {
             conn,
             unique_name,
-            match_rules: HashSet::new(),
+            match_rules: MatchRules::default(),
         })
     }
 
@@ -69,75 +70,17 @@ impl Peer {
 
     /// # Panics
     ///
-    /// if header, SENDER or DESTINATION is not set.
+    /// Same as [`MatchRules::matches`].
     pub fn interested(&self, msg: &zbus::Message, name_registry: &NameRegistry) -> bool {
-        let hdr = msg.header().expect("received message without header");
-
-        let ret = self.match_rules.iter().any(|rule| {
-            // First make use of zbus API
-            match rule.matches(msg) {
-                Ok(false) => return false,
-                Ok(true) => (),
-                Err(e) => {
-                    tracing::warn!("error matching rule: {}", e);
-
-                    return false;
-                }
-            }
-
-            // Then match sender and destination involving well-known names, manually.
-            if let Some(sender) = rule.sender().cloned().and_then(|name| match name {
-                BusName::WellKnown(name) => name_registry.lookup(name).as_deref().cloned(),
-                // Unique name is already taken care of by the zbus API.
-                BusName::Unique(_) => None,
-            }) {
-                if sender
-                    != hdr
-                        .sender()
-                        .expect("SENDER field unset")
-                        .expect("SENDER field unset")
-                        .clone()
-                {
-                    return false;
-                }
-            }
-
-            // The destination.
-            if let Some(destination) = rule.destination() {
-                match hdr
-                    .destination()
-                    .expect("DESTINATION field unset")
-                    .expect("DESTINATION field unset")
-                    .clone()
-                {
-                    BusName::WellKnown(name) => match name_registry.lookup(name) {
-                        Some(name) if name == *destination => (),
-                        Some(_) => return false,
-                        None => return false,
-                    },
-                    // Unique name is already taken care of by the zbus API.
-                    BusName::Unique(_) => {}
-                }
-            }
-
-            true
-        });
-
-        ret
+        self.match_rules.matches(msg, name_registry)
     }
 
     pub fn add_match_rule(&mut self, rule: OwnedMatchRule) {
-        self.match_rules.insert(rule);
+        self.match_rules.add(rule);
     }
 
     /// Remove the first rule that matches.
     pub fn remove_match_rule(&mut self, rule: OwnedMatchRule) -> zbus::fdo::Result<()> {
-        if !self.match_rules.remove(&rule) {
-            return Err(zbus::fdo::Error::MatchRuleNotFound(
-                "No such match rule".to_string(),
-            ));
-        }
-
-        Ok(())
+        self.match_rules.remove(rule)
     }
 }

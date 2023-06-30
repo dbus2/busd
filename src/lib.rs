@@ -1,5 +1,6 @@
 pub mod bus;
 pub mod fdo;
+pub mod match_rules;
 pub mod name_registry;
 pub mod peer;
 pub mod peers;
