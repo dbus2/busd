@@ -1,5 +1,8 @@
 extern crate busd;
 
+#[cfg(unix)]
+use std::{fs::File, io::Write, os::fd::FromRawFd};
+
 use busd::bus;
 
 use anyhow::Result;
@@ -26,6 +29,18 @@ struct Args {
     #[clap(long)]
     #[arg(value_enum, default_value_t = AuthMechanism::External)]
     auth_mechanism: AuthMechanism,
+
+    /// File descriptor to which readiness notifications are sent.
+    ///
+    /// Once the server is listening to connections on the specified socket, it will print
+    /// `READY=1\n` into this file descriptor and close it.
+    ///
+    /// This readiness notification mechanism which works on both systemd and s6.
+    ///
+    /// This feature is only available on unix-like platforms.
+    #[cfg(unix)]
+    #[clap(long)]
+    ready_fd: Option<i32>,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -59,6 +74,14 @@ async fn main() -> Result<()> {
 
     let mut bus =
         bus::Bus::for_address(args.address.as_deref(), args.auth_mechanism.into()).await?;
+
+    #[cfg(unix)]
+    if let Some(fd) = args.ready_fd {
+        // SAFETY: accessing `ready_fd` in any other context aside from `main` is disallowed, so
+        // there is only one owner for this file descriptor.
+        let mut ready_file = unsafe { File::from_raw_fd(fd) };
+        ready_file.write_all(b"READY=1\n")?;
+    }
 
     if args.print_address {
         println!("{},guid={}", bus.address(), bus.guid());
