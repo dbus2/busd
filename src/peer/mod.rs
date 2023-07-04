@@ -3,19 +3,14 @@ pub use stream::*;
 
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use tracing::trace;
 use zbus::{
     names::OwnedUniqueName, AuthMechanism, Connection, ConnectionBuilder, Guid, OwnedMatchRule,
     Socket,
 };
 
-use crate::{
-    fdo::{self, DBus},
-    match_rules::MatchRules,
-    name_registry::NameRegistry,
-    peers::Peers,
-};
+use crate::{fdo, match_rules::MatchRules, name_registry::NameRegistry};
 
 /// A peer connection.
 #[derive(Debug)]
@@ -23,6 +18,7 @@ pub struct Peer {
     conn: Connection,
     unique_name: OwnedUniqueName,
     match_rules: MatchRules,
+    greeted: bool,
 }
 
 impl Peer {
@@ -31,20 +27,15 @@ impl Peer {
         id: Option<usize>,
         socket: Box<dyn Socket + 'static>,
         auth_mechanism: AuthMechanism,
-        peers: Arc<Peers>,
     ) -> Result<Self> {
         let unique_name = match id {
             Some(id) => OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap(),
             None => OwnedUniqueName::try_from(fdo::BUS_NAME).unwrap(),
         };
-        let dbus = DBus::new(unique_name.clone(), peers.clone(), guid.clone());
         let conn = ConnectionBuilder::socket(socket)
             .server(&guid)
             .p2p()
             .auth_mechanisms(&[auth_mechanism])
-            .unique_name(fdo::BUS_NAME)?
-            .name(fdo::BUS_NAME)?
-            .serve_at(fdo::DBUS_PATH, dbus)?
             .build()
             .await?;
         trace!("created: {:?}", conn);
@@ -53,6 +44,7 @@ impl Peer {
             conn,
             unique_name,
             match_rules: MatchRules::default(),
+            greeted: false,
         })
     }
 
@@ -82,5 +74,17 @@ impl Peer {
     /// Remove the first rule that matches.
     pub fn remove_match_rule(&mut self, rule: OwnedMatchRule) -> zbus::fdo::Result<()> {
         self.match_rules.remove(rule)
+    }
+
+    /// This can only be called once.
+    pub async fn hello(&mut self) -> zbus::fdo::Result<()> {
+        if self.greeted {
+            return Err(zbus::fdo::Error::Failed(
+                "Can only call `Hello` method once".to_string(),
+            ));
+        }
+        self.greeted = true;
+
+        Result::Ok(())
     }
 }

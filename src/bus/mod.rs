@@ -17,7 +17,10 @@ use tokio::{spawn, task::JoinHandle};
 use tracing::{debug, info, trace, warn};
 use zbus::{Address, AuthMechanism, Connection, ConnectionBuilder, Guid, Socket, TcpAddress};
 
-use crate::peers::Peers;
+use crate::{
+    fdo::{self, DBus},
+    peers::Peers,
+};
 
 /// The bus.
 #[derive(Debug)]
@@ -79,8 +82,14 @@ impl Bus {
 
         // Create a peer for ourselves.
         trace!("Creating self-dial connection.");
+        let guid = bus.guid().clone();
+        let dbus = DBus::new(bus.peers().clone(), guid.clone());
         let conn_builder_fut = ConnectionBuilder::address(address)?
             .auth_mechanisms(&[auth_mechanism])
+            .p2p()
+            .unique_name(fdo::BUS_NAME)?
+            .name(fdo::BUS_NAME)?
+            .serve_at(fdo::DBUS_PATH, dbus)?
             .build()
             .map_err(Into::into);
 

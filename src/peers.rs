@@ -10,12 +10,11 @@ use tracing::{debug, trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
     zvariant::Optional,
-    AuthMechanism, Guid, MessageBuilder, MessageField, MessageFieldCode, MessageType,
-    SignalContext, Socket,
+    AuthMechanism, Guid, MessageBuilder, MessageField, MessageFieldCode, MessageType, Socket,
 };
 
 use crate::{
-    fdo::{self, DBus},
+    fdo,
     name_registry::{NameOwnerChanged, NameRegistry},
     peer::{Peer, Stream},
 };
@@ -44,7 +43,7 @@ impl Peers {
         auth_mechanism: AuthMechanism,
     ) -> Result<()> {
         let mut peers = self.peers_mut().await;
-        let peer = Peer::new(guid.clone(), id, socket, auth_mechanism, self.clone()).await?;
+        let peer = Peer::new(guid.clone(), id, socket, auth_mechanism).await?;
         let unique_name = peer.unique_name().clone();
         match peers.get(&unique_name) {
             Some(peer) => panic!(
@@ -95,31 +94,34 @@ impl Peers {
         self.broadcast_msg(Arc::new(msg)).await;
 
         // Now unicast the appropriate signal to the old and new owners.
-        let peers = self.peers().await;
         if let Some(old_owner) = old_owner {
-            match peers.get(&*old_owner) {
-                Some(peer) => {
-                    let signal_ctxt = SignalContext::new(peer.conn(), fdo::DBUS_PATH)
-                        .unwrap()
-                        .set_destination(old_owner.into());
-                    DBus::name_lost(&signal_ctxt, name.clone()).await?;
-                }
-                None => {
-                    warn!("Couldn't notify inexistant peer {old_owner} about loosing name {name}")
-                }
+            let msg = MessageBuilder::signal(fdo::DBUS_PATH, fdo::DBUS_INTERFACE, "NameLost")
+                .unwrap()
+                .sender(fdo::BUS_NAME)
+                .unwrap()
+                .destination(old_owner.clone())
+                .unwrap()
+                .build(&name)?;
+            if let Err(e) = self
+                .send_msg_to_unique_name(Arc::new(msg), old_owner.clone())
+                .await
+            {
+                warn!("Couldn't notify inexistant peer {old_owner} about loosing name {name}: {e}")
             }
         }
         if let Some(new_owner) = new_owner {
-            match peers.get(&*new_owner) {
-                Some(peer) => {
-                    let signal_ctxt = SignalContext::new(peer.conn(), fdo::DBUS_PATH)
-                        .unwrap()
-                        .set_destination(new_owner.into());
-                    DBus::name_acquired(&signal_ctxt, name.clone()).await?;
-                }
-                None => {
-                    warn!("Couldn't notify inexistant peer {new_owner} about acquiring name {name}")
-                }
+            let msg = MessageBuilder::signal(fdo::DBUS_PATH, fdo::DBUS_INTERFACE, "NameAcquired")
+                .unwrap()
+                .sender(fdo::BUS_NAME)
+                .unwrap()
+                .destination(new_owner.clone())
+                .unwrap()
+                .build(&name)?;
+            if let Err(e) = self
+                .send_msg_to_unique_name(Arc::new(msg), new_owner.clone())
+                .await
+            {
+                warn!("Couldn't notify peer {new_owner} about acquiring name {name}: {e}")
             }
         }
 

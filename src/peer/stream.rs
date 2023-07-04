@@ -1,6 +1,6 @@
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
-use std::{future::ready, pin::Pin, sync::Arc};
+use std::{pin::Pin, sync::Arc};
 
 use anyhow::{bail, Error, Result};
 use futures_util::{Stream as FutureStream, TryStream, TryStreamExt};
@@ -10,7 +10,7 @@ use zbus::{
     MessageType,
 };
 
-use crate::{fdo::BUS_NAME, peer::Peer};
+use crate::peer::Peer;
 
 /// Message stream for a peer.
 ///
@@ -30,14 +30,6 @@ impl Stream {
         let unique_name = peer.unique_name().clone();
         let stream = MessageStream::from(peer.conn())
             .map_err(Into::into)
-            .try_filter(|msg| match msg.fields() {
-                // Messages to the Bus will be hanled by our ObjectServer.
-                Ok(fields) => match fields.get_field(MessageFieldCode::Destination) {
-                    Some(MessageField::Destination(d)) if d.starts_with(BUS_NAME) => ready(false),
-                    _ => ready(true),
-                },
-                Err(_) => ready(true),
-            })
             .and_then(move |msg| {
                 let unique_name = unique_name.clone();
                 async move {
