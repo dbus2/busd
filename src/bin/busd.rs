@@ -3,10 +3,10 @@ extern crate busd;
 #[cfg(unix)]
 use std::{fs::File, io::Write, os::fd::FromRawFd};
 
-use busd::bus;
+use busd::{bus, config::BusConfig};
 
 use anyhow::Result;
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, ValueEnum};
 #[cfg(unix)]
 use tokio::{select, signal::unix::SignalKind};
 use tracing::error;
@@ -16,7 +16,10 @@ use tracing::{info, warn};
 /// A simple D-Bus broker.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
-struct Args {
+struct BusdArgs {
+    #[command(flatten)]
+    config: ConfigArg,
+
     /// The address to listen on.
     #[clap(short = 'a', long, value_parser)]
     address: Option<String>,
@@ -41,6 +44,22 @@ struct Args {
     #[cfg(unix)]
     #[clap(long)]
     ready_fd: Option<i32>,
+}
+
+#[derive(Args, Debug)]
+#[group(required = false, multiple = false)]
+struct ConfigArg {
+    /// The configuration file.
+    #[clap(long, value_parser)]
+    config_file: Option<String>,
+
+    /// Use the standard configuration file for the per-login-session message bus.
+    #[clap(long, value_parser)]
+    session: bool,
+
+    /// Use the standard configuration file for the system-wide message bus.
+    #[clap(long, value_parser)]
+    system: bool,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -70,10 +89,33 @@ impl From<AuthMechanism> for zbus::AuthMechanism {
 async fn main() -> Result<()> {
     busd::tracing_subscriber::init();
 
-    let args = Args::parse();
+    let mut args = BusdArgs::parse();
 
-    let mut bus =
-        bus::Bus::for_address(args.address.as_deref(), args.auth_mechanism.into()).await?;
+    // let's make --session the default
+    if !args.config.session && !args.config.system && args.config.config_file.is_none() {
+        args.config.session = true;
+    }
+    // FIXME: make default config configurable or OS dependant
+    if args.config.session {
+        args.config.config_file = Some("/usr/share/dbus-1/session.conf".into());
+    }
+    if args.config.system {
+        args.config.config_file = Some("/usr/share/dbus-1/system.conf".into());
+    }
+
+    let mut config = BusConfig::default();
+    if let Some(file) = args.config.config_file {
+        config = BusConfig::read(file)?;
+    }
+
+    if let Some(address) = args.address {
+        config.add_listen_address(address);
+    }
+
+    // FIXME: we don't support multiple <listen> atm
+    let listen_addresses = config.listen_addresses();
+    let address = listen_addresses.last().unwrap();
+    let mut bus = bus::Bus::for_address(address, args.auth_mechanism.into()).await?;
 
     #[cfg(unix)]
     if let Some(fd) = args.ready_fd {

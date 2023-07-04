@@ -266,6 +266,7 @@ dependencies = [
  "hex",
  "nix",
  "ntest",
+ "quick-xml",
  "rand",
  "serde",
  "tokio",
@@ -1192,6 +1193,16 @@ checksum = "747761bc3dc48f9a34553bf65605cf6cb6288ba219f3450b4275dbd81539551a"
 dependencies = [
  "bytes",
  "prost",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81b9228215d82c7b61490fec1de287136b5de6f5700f6e58ea9ad61a7964ca51"
+dependencies = [
+ "memchr",
+ "serde",
 ]
 
 [[package]]

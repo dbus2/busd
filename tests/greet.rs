@@ -40,9 +40,7 @@ async fn greet() {
 }
 
 async fn greet_(socket_addr: &str, auth_mechanism: AuthMechanism) {
-    let mut bus = Bus::for_address(Some(socket_addr), auth_mechanism)
-        .await
-        .unwrap();
+    let mut bus = Bus::for_address(socket_addr, auth_mechanism).await.unwrap();
     let (tx, mut rx) = channel(1);
 
     let handle = tokio::spawn(async move {

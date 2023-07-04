@@ -5,12 +5,9 @@ use futures_util::{
     future::{select, Either},
     pin_mut, try_join, TryFutureExt,
 };
-use std::{cell::OnceCell, str::FromStr, sync::Arc};
 #[cfg(unix)]
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
+use std::{cell::OnceCell, sync::Arc};
 #[cfg(unix)]
 use tokio::fs::remove_file;
 use tokio::{spawn, task::JoinHandle};
@@ -51,24 +48,53 @@ enum Listener {
 }
 
 impl Bus {
-    pub async fn for_address(address: Option<&str>, auth_mechanism: AuthMechanism) -> Result<Self> {
-        let address = match address {
-            Some(address) => address.to_string(),
-            None => default_address(),
-        };
-        let address = Address::from_str(&address)?;
-        let listener = match &address {
+    pub async fn for_address(address: &str, auth_mechanism: AuthMechanism) -> Result<Self> {
+        let address = address.try_into()?;
+
+        let (listener, address) = match &address {
             #[cfg(unix)]
             Address::Unix(path) => {
                 let path = Path::new(&path);
                 info!("Listening on {}.", path.display());
 
-                Self::unix_stream(path).await
+                Self::unix_stream(path).await.map(|l| (l, address))
             }
-            Address::Tcp(address) => {
-                info!("Listening on `{}:{}`.", address.host(), address.port());
+            #[cfg(unix)]
+            Address::UnixDir(dir) => {
+                let dir = Path::new(&dir);
+                let mut n = 0;
+                loop {
+                    n += 1;
+                    let path = dir.join(format!("dbus-{}", n));
 
-                Self::tcp_stream(address).await
+                    let Result::Ok(l) = Self::unix_stream(&path).await else {
+                        continue;
+                    };
+                    info!("Listening on {}.", path.display());
+                    break Ok((l, Address::Unix(path.into())));
+                }
+            }
+            #[cfg(unix)]
+            Address::UnixTmpDir(dir) => {
+                let mut s = std::ffi::OsString::from("\0");
+                s.push(dir);
+                let dir = Path::new(&s);
+                let mut n = 0;
+                loop {
+                    n += 1;
+                    let path = dir.join(format!("dbus-{}", n));
+
+                    let Result::Ok(l) = Self::unix_stream(&path).await else {
+                        continue;
+                    };
+                    info!("Listening on abstract {}.", path.display());
+                    break Ok((l, Address::Unix(path.into())));
+                }
+            }
+            Address::Tcp(tcp) => {
+                info!("Listening on `{}:{}`.", tcp.host(), tcp.port());
+
+                Self::tcp_stream(tcp).await.map(|l| (l, address))
             }
             Address::NonceTcp { .. } => bail!("`nonce-tcp` transport is not supported (yet)."),
             Address::Autolaunch(_) => bail!("`autolaunch` transport is not supported (yet)."),
@@ -142,6 +168,7 @@ impl Bus {
     #[cfg(unix)]
     async fn unix_stream(socket_path: &Path) -> Result<Listener> {
         let socket_path = socket_path.to_path_buf();
+        let _ = remove_file(&socket_path).await;
         let listener = Listener::Unix {
             listener: tokio::net::UnixListener::bind(&socket_path)?,
             socket_path,
@@ -242,25 +269,4 @@ impl Bus {
             }
         }
     }
-}
-
-#[cfg(unix)]
-fn default_address() -> String {
-    let runtime_dir = env::var("XDG_RUNTIME_DIR")
-        .as_ref()
-        .map(|s| Path::new(s).to_path_buf())
-        .ok()
-        .unwrap_or_else(|| {
-            Path::new("/run")
-                .join("user")
-                .join(format!("{}", nix::unistd::Uid::current()))
-        });
-    let path = runtime_dir.join("busd-session");
-
-    format!("unix:path={}", path.display())
-}
-
-#[cfg(not(unix))]
-fn default_address() -> String {
-    "tcp:host=127.0.0.1,port=4242".to_string()
 }
