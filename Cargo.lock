@@ -262,6 +262,7 @@ dependencies = [
  "clap",
  "console-subscriber",
  "enumflags2",
+ "event-listener",
  "futures-util",
  "hex",
  "nix",

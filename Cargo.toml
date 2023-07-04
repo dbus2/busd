@@ -36,6 +36,7 @@ console-subscriber = { version = "0.1.8", optional = true }
 hex = "0.4.3"
 xdg-home = "1.0.0"
 rand = "0.8.5"
+event-listener = "2.5.3"
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.26.0"
