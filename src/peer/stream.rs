@@ -19,10 +19,10 @@ use crate::peer::Peer;
 /// * The destination field is present and readable for non-signals.
 /// * The sender field is present and set to the unique name of the peer.
 pub struct Stream {
-    stream: Pin<Box<PeerStreamInner>>,
+    stream: Pin<Box<StreamInner>>,
 }
 
-type PeerStreamInner =
+type StreamInner =
     dyn TryStream<Ok = Arc<Message>, Error = Error, Item = Result<Arc<Message>>> + Send;
 
 impl Stream {
