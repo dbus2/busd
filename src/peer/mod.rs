@@ -3,7 +3,7 @@ pub use stream::*;
 
 use std::sync::Arc;
 
-use anyhow::{Ok, Result};
+use anyhow::Result;
 use tracing::trace;
 use zbus::{
     names::OwnedUniqueName, AuthMechanism, Connection, ConnectionBuilder, Guid, OwnedMatchRule,
