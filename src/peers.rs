@@ -1,5 +1,10 @@
 use anyhow::{bail, Context, Result};
-use futures_util::{stream::StreamExt, SinkExt};
+use event_listener::EventListener;
+use futures_util::{
+    future::{select, Either},
+    stream::StreamExt,
+    SinkExt,
+};
 use std::{
     collections::BTreeMap,
     ops::{Deref, DerefMut},
@@ -52,7 +57,11 @@ impl Peers {
             ),
             None => {
                 let peer_stream = peer.stream();
-                tokio::spawn(self.clone().serve_peer(peer_stream, unique_name.clone()));
+                let listener = peer.listen_cancellation();
+                tokio::spawn(
+                    self.clone()
+                        .serve_peer(peer_stream, listener, unique_name.clone()),
+                );
                 peers.insert(unique_name.clone(), peer);
             }
         }
@@ -131,15 +140,27 @@ impl Peers {
     async fn serve_peer(
         self: Arc<Self>,
         mut peer_stream: Stream,
+        mut cancellation_listener: EventListener,
         unique_name: OwnedUniqueName,
     ) -> Result<()> {
-        while let Some(msg) = peer_stream.next().await {
-            let msg = match msg {
-                Ok(msg) => msg,
-                Err(e) => {
-                    debug!("{e}");
+        loop {
+            let msg = match select(cancellation_listener, peer_stream.next()).await {
+                Either::Left(_) | Either::Right((None, _)) => {
+                    trace!("Peer `{}` disconnected", unique_name);
 
-                    continue;
+                    break;
+                }
+                Either::Right((Some(msg), listener)) => {
+                    cancellation_listener = listener;
+
+                    match msg {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            debug!("{e}");
+
+                            continue;
+                        }
+                    }
                 }
             };
 

@@ -1,4 +1,5 @@
 mod stream;
+use event_listener::{Event, EventListener};
 pub use stream::*;
 
 use std::sync::Arc;
@@ -19,6 +20,7 @@ pub struct Peer {
     unique_name: OwnedUniqueName,
     match_rules: MatchRules,
     greeted: bool,
+    canceled_event: Event,
 }
 
 impl Peer {
@@ -45,6 +47,7 @@ impl Peer {
             unique_name,
             match_rules: MatchRules::default(),
             greeted: false,
+            canceled_event: Event::new(),
         })
     }
 
@@ -58,6 +61,10 @@ impl Peer {
 
     pub fn stream(&self) -> Stream {
         Stream::for_peer(self)
+    }
+
+    pub fn listen_cancellation(&self) -> EventListener {
+        self.canceled_event.listen()
     }
 
     /// # Panics
@@ -86,5 +93,11 @@ impl Peer {
         self.greeted = true;
 
         Result::Ok(())
+    }
+}
+
+impl Drop for Peer {
+    fn drop(&mut self) {
+        self.canceled_event.notify(usize::MAX);
     }
 }
