@@ -11,6 +11,164 @@ pub struct BusConfig {
     pub elements: Vec<Element>,
 }
 
+impl BusConfig {
+    /// The well-known type of the message bus. Currently known values are
+    /// "system" and "session".
+    ///
+    /// Note: the last <type> wins.
+    pub fn r#type(&self) -> Option<&str> {
+        self.elements.iter().rev().find_map(|e| match e {
+            Element::Type(e) => Some(e.as_str()),
+            _ => None,
+        })
+    }
+
+    /// The user account the daemon should run as, as either a username or a
+    /// UID.
+    ///
+    /// Note: the last <user> wins.
+    pub fn user(&self) -> Option<&str> {
+        self.elements.iter().rev().find_map(|e| match e {
+            Element::User(e) => Some(e.as_str()),
+            _ => None,
+        })
+    }
+
+    /// The bus daemon becomes a real daemon (forks into the background, etc.)
+    pub fn fork(&self) -> bool {
+        self.elements.iter().any(|e| matches!(e, Element::Fork))
+    }
+
+    /// The bus daemon keeps its original umask when forking.
+    pub fn keep_umask(&self) -> bool {
+        self.elements
+            .iter()
+            .any(|e| matches!(e, Element::KeepUmask))
+    }
+
+    /// The bus daemon will log to syslog.
+    pub fn syslog(&self) -> bool {
+        self.elements.iter().any(|e| matches!(e, Element::Syslog))
+    }
+
+    /// The bus daemon will write its pid to the specified file.
+    ///
+    /// Note: the last <pidfile> wins.
+    pub fn pidfile(&self) -> Option<&str> {
+        self.elements.iter().rev().find_map(|e| match e {
+            Element::PIDFile(e) => Some(e.as_str()),
+            _ => None,
+        })
+    }
+
+    /// Addresses that the bus should listen on.
+    pub fn listen_addresses(&self) -> Vec<&str> {
+        self.elements
+            .iter()
+            .filter_map(|e| match e {
+                Element::Listen(e) => Some(e.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Add an address that the bus should listen on.
+    pub fn add_listen_address(&mut self, address: String) {
+        self.elements.push(Element::Listen(address));
+    }
+
+    /// Permitted authorization mechanisms.
+    pub fn auths(&self) -> Vec<&str> {
+        self.elements
+            .iter()
+            .filter_map(|e| match e {
+                Element::Auth(e) => Some(e.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Directory to search for .service files.
+    pub fn service_dirs(&self) -> Vec<&str> {
+        self.elements
+            .iter()
+            .filter_map(|e| match e {
+                Element::ServiceDir(e) => Some(e.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Requests a standard set of session service directories.
+    pub fn standard_session_service_dirs(&self) -> bool {
+        self.elements
+            .iter()
+            .any(|e| matches!(e, Element::StandardSessionServiceDirs))
+    }
+
+    /// Requests a standard set of system service directories.
+    pub fn standard_system_service_dirs(&self) -> bool {
+        self.elements
+            .iter()
+            .any(|e| matches!(e, Element::StandardSystemServiceDirs))
+    }
+
+    /// Specifies the setuid helper that is used to launch system daemons with
+    /// an alternate user.
+    ///
+    /// Note: the last <servicehelper> wins.
+    pub fn service_helper(&self) -> Option<&str> {
+        self.elements.iter().rev().find_map(|e| match e {
+            Element::ServiceHelper(e) => Some(e.as_str()),
+            _ => None,
+        })
+    }
+
+    /// Resource limits.
+    pub fn limits(&self) -> Vec<&Limit> {
+        self.elements
+            .iter()
+            .filter_map(|e| match e {
+                Element::Limit(e) => Some(e),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Security policies.
+    pub fn policies(&self) -> Vec<&Policy> {
+        self.elements
+            .iter()
+            .filter_map(|e| match e {
+                Element::Policy(e) => Some(e),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// SELinux settings.
+    pub fn selinux(&self) -> Vec<&SELinux> {
+        self.elements
+            .iter()
+            .filter_map(|e| match e {
+                Element::SELinux(e) => Some(e),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// AppArmor settings.
+    pub fn apparmor(&self) -> Vec<&AppArmor> {
+        self.elements
+            .iter()
+            .filter_map(|e| match e {
+                Element::AppArmor(e) => Some(e),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum Element {
