@@ -91,7 +91,7 @@ impl Peers {
         let new_owner = name_owner_changed.new_owner.map(UniqueName::from);
 
         // First broadcast the name change signal.
-        let msg = MessageBuilder::signal(fdo::DBUS_PATH, fdo::DBUS_INTERFACE, "NameOwnerChanged")
+        let msg = MessageBuilder::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameOwnerChanged")
             .unwrap()
             .sender(fdo::BUS_NAME)
             .unwrap()
@@ -104,7 +104,7 @@ impl Peers {
 
         // Now unicast the appropriate signal to the old and new owners.
         if let Some(old_owner) = old_owner {
-            let msg = MessageBuilder::signal(fdo::DBUS_PATH, fdo::DBUS_INTERFACE, "NameLost")
+            let msg = MessageBuilder::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameLost")
                 .unwrap()
                 .sender(fdo::BUS_NAME)
                 .unwrap()
@@ -119,7 +119,7 @@ impl Peers {
             }
         }
         if let Some(new_owner) = new_owner {
-            let msg = MessageBuilder::signal(fdo::DBUS_PATH, fdo::DBUS_INTERFACE, "NameAcquired")
+            let msg = MessageBuilder::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameAcquired")
                 .unwrap()
                 .sender(fdo::BUS_NAME)
                 .unwrap()

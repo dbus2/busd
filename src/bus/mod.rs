@@ -89,7 +89,7 @@ impl Bus {
             .p2p()
             .unique_name(fdo::BUS_NAME)?
             .name(fdo::BUS_NAME)?
-            .serve_at(fdo::DBUS_PATH, dbus)?
+            .serve_at(fdo::DBus::PATH, dbus)?
             .build()
             .map_err(Into::into);
 

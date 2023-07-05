@@ -19,18 +19,17 @@ use zbus::{
 
 use crate::{peer::Peer, peers::Peers};
 
-pub const BUS_NAME: &str = "org.freedesktop.DBus";
-pub const DBUS_PATH: &str = "/org/freedesktop/DBus";
-pub const DBUS_INTERFACE: &str = "org.freedesktop.DBus";
-
 #[derive(Debug)]
-pub(super) struct DBus {
+pub struct DBus {
     peers: Weak<Peers>,
     guid: Arc<Guid>,
 }
 
 impl DBus {
-    pub(super) fn new(peers: Arc<Peers>, guid: Arc<Guid>) -> Self {
+    pub const PATH: &str = "/org/freedesktop/DBus";
+    pub const INTERFACE: &str = "org.freedesktop.DBus";
+
+    pub fn new(peers: Arc<Peers>, guid: Arc<Guid>) -> Self {
         Self {
             peers: Arc::downgrade(&peers),
             guid,
