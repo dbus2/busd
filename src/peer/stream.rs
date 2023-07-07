@@ -49,7 +49,7 @@ impl Stream {
                         MessageType::Invalid => bail!("Invalid message"),
                     };
 
-                    // Ensure destination field is present for non-signals and readable.
+                    // Ensure destination field is present and readable for non-signals.
                     if msg.message_type() != MessageType::Signal {
                         match fields.get_field(MessageFieldCode::Destination) {
                             Some(MessageField::Destination(_)) => (),
