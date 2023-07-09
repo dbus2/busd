@@ -4,17 +4,16 @@ use std::{
 };
 
 use enumflags2::BitFlags;
-use serde::Serialize;
-use tokio::{spawn, sync::oneshot};
-use tracing::{debug, warn};
+use tokio::spawn;
+use tracing::warn;
 use zbus::{
     dbus_interface,
     fdo::{
         ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
     },
     names::{BusName, InterfaceName, OwnedBusName, OwnedUniqueName, UniqueName, WellKnownName},
-    zvariant::{Optional, Signature, Type},
-    Guid, MessageHeader, OwnedMatchRule, SignalContext,
+    zvariant::Optional,
+    Guid, MessageHeader, OwnedMatchRule, ResponseDispatchNotifier, SignalContext,
 };
 
 use crate::{peer::Peer, peers::Peers};
@@ -66,7 +65,7 @@ impl DBus {
         &self,
         #[zbus(header)] hdr: MessageHeader<'_>,
         #[zbus(signal_context)] ctxt: SignalContext<'_>,
-    ) -> Result<HelloResponse> {
+    ) -> Result<ResponseDispatchNotifier<OwnedUniqueName>> {
         let name = msg_sender(&hdr);
         let peers = self.peers()?;
         let mut peers = peers.peers_mut().await;
@@ -79,18 +78,10 @@ impl DBus {
         // 1. `Hello` to return ASAP and hence client connection to be esablished.
         // 2. The `Hello` response to arrive before the `NameAcquired` signal.
         let unique_name = peer.unique_name().clone();
-        let (tx, rx) = oneshot::channel();
-        let response = HelloResponse {
-            name: unique_name.clone(),
-            tx: Some(tx),
-        };
+        let (response, listener) = ResponseDispatchNotifier::new(unique_name.clone());
         let ctxt = ctxt.to_owned();
         spawn(async move {
-            if let Err(e) = rx.await {
-                warn!("Failed to wait for `Hello` response: {e}");
-
-                return;
-            }
+            listener.await;
             let owner = UniqueName::from(unique_name);
 
             if let Err(e) = Self::name_owner_changed(
@@ -408,42 +399,6 @@ impl DBus {
         signal_ctxt: &SignalContext<'_>,
         name: BusName<'_>,
     ) -> zbus::Result<()>;
-}
-
-/// Custom type for `Hello` method response.
-///
-/// We need to ensure that the `NameAcquired` signal is not sent out before the response so we
-/// return this from the method and when zbus is done sending it, it will drop it and we can then
-/// send the signal.
-#[derive(Debug)]
-struct HelloResponse {
-    name: OwnedUniqueName,
-    tx: Option<oneshot::Sender<()>>,
-}
-
-impl Serialize for HelloResponse {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.name.serialize(serializer)
-    }
-}
-
-impl Type for HelloResponse {
-    fn signature() -> Signature<'static> {
-        UniqueName::signature()
-    }
-}
-
-impl Drop for HelloResponse {
-    fn drop(&mut self) {
-        if let Some(tx) = self.tx.take() {
-            if let Err(e) = tx.send(()) {
-                debug!("{e:?}");
-            }
-        }
-    }
 }
 
 /// Helper for getting the peer name from a message header.
