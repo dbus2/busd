@@ -16,6 +16,7 @@ use zbus::{
     Guid, MessageHeader, OwnedMatchRule, ResponseDispatchNotifier, SignalContext,
 };
 
+use super::msg_sender;
 use crate::{peer::Peer, peers::Peers};
 
 #[derive(Debug)]
@@ -399,13 +400,4 @@ impl DBus {
         signal_ctxt: &SignalContext<'_>,
         name: BusName<'_>,
     ) -> zbus::Result<()>;
-}
-
-/// Helper for getting the peer name from a message header.
-fn msg_sender<'h>(hdr: &'h MessageHeader<'h>) -> &'h UniqueName<'h> {
-    // SAFETY: The bus (that's us!) is supposed to ensure a valid sender on the message.
-    hdr.sender()
-        .ok()
-        .flatten()
-        .expect("Missing `sender` header")
 }
