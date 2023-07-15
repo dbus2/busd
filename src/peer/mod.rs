@@ -1,6 +1,8 @@
 mod stream;
 use event_listener::{Event, EventListener};
 pub use stream::*;
+mod monitor;
+pub use monitor::*;
 
 use std::sync::Arc;
 
@@ -93,6 +95,10 @@ impl Peer {
         self.greeted = true;
 
         Result::Ok(())
+    }
+
+    pub fn become_monitor(self, match_rules: MatchRules) -> Monitor {
+        Monitor::new(self, match_rules)
     }
 }
 
