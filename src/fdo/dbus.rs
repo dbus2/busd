@@ -4,53 +4,48 @@ use std::{
 };
 
 use enumflags2::BitFlags;
-use serde::Serialize;
-use tokio::{spawn, sync::oneshot};
-use tracing::{debug, warn};
+use tokio::spawn;
+use tracing::warn;
 use zbus::{
     dbus_interface,
     fdo::{
         ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
     },
     names::{BusName, InterfaceName, OwnedBusName, OwnedUniqueName, UniqueName, WellKnownName},
-    zvariant::{Optional, Signature, Type},
-    Guid, OwnedMatchRule, SignalContext,
+    zvariant::Optional,
+    Guid, MessageHeader, OwnedMatchRule, ResponseDispatchNotifier, SignalContext,
 };
 
-use crate::{name_registry::NameOwnerChanged, peer::Peer, peers::Peers};
-
-pub const BUS_NAME: &str = "org.freedesktop.DBus";
-pub const DBUS_PATH: &str = "/org/freedesktop/DBus";
-pub const DBUS_INTERFACE: &str = "org.freedesktop.DBus";
+use super::msg_sender;
+use crate::{peer::Peer, peers::Peers};
 
 #[derive(Debug)]
-pub(super) struct DBus {
-    unique_name: OwnedUniqueName,
+pub struct DBus {
     peers: Weak<Peers>,
     guid: Arc<Guid>,
-    greeted: bool,
 }
 
 impl DBus {
-    pub(super) fn new(unique_name: OwnedUniqueName, peers: Arc<Peers>, guid: Arc<Guid>) -> Self {
+    pub const PATH: &str = "/org/freedesktop/DBus";
+    pub const INTERFACE: &str = "org.freedesktop.DBus";
+
+    pub fn new(peers: Arc<Peers>, guid: Arc<Guid>) -> Self {
         Self {
-            unique_name,
             peers: Arc::downgrade(&peers),
             guid,
-            greeted: false,
         }
     }
 
     /// Helper for D-Bus methods that call a function on a peer.
-    async fn call_mut_on_peer<F, R>(&mut self, func: F) -> Result<R>
+    async fn call_mut_on_peer<F, R>(&self, func: F, hdr: MessageHeader<'_>) -> Result<R>
     where
         F: FnOnce(&mut Peer) -> Result<R>,
     {
-        let name = &self.unique_name;
+        let name = msg_sender(&hdr);
         let peers = self.peers()?;
         let mut peers = peers.peers_mut().await;
         let peer = peers
-            .get_mut(name)
+            .get_mut(name.as_str())
             .ok_or_else(|| Error::NameHasNoOwner(format!("No such peer: {}", name)))?;
 
         func(peer)
@@ -67,43 +62,47 @@ impl DBus {
 #[dbus_interface(interface = "org.freedesktop.DBus")]
 impl DBus {
     /// This is already called & handled and we only need to handle it once.
-    async fn hello(&mut self) -> Result<HelloResponse> {
-        if self.greeted {
-            Err(Error::Failed(
-                "Can only call `Hello` method once".to_string(),
-            ))
-        } else {
-            self.greeted = true;
+    async fn hello(
+        &self,
+        #[zbus(header)] hdr: MessageHeader<'_>,
+        #[zbus(signal_context)] ctxt: SignalContext<'_>,
+    ) -> Result<ResponseDispatchNotifier<OwnedUniqueName>> {
+        let name = msg_sender(&hdr);
+        let peers = self.peers()?;
+        let mut peers = peers.peers_mut().await;
+        let peer = peers
+            .get_mut(name.as_str())
+            .ok_or_else(|| Error::NameHasNoOwner(format!("No such peer: {}", name)))?;
+        peer.hello().await?;
 
-            // Notify name change in a separate task because we want:
-            // 1. `Hello` to return ASAP and hence client connection to be esablished.
-            // 2. The `Hello` response to arrive before the `NameAcquired` signal.
-            let peers = self.peers()?;
-            let unique_name = self.unique_name.clone();
-            let (tx, rx) = oneshot::channel();
-            let response = HelloResponse {
-                name: unique_name.clone(),
-                tx: Some(tx),
-            };
-            spawn(async move {
-                if let Err(e) = rx.await {
-                    warn!("Failed to wait for `Hello` response: {e}");
+        // Notify name change in a separate task because we want:
+        // 1. `Hello` to return ASAP and hence client connection to be esablished.
+        // 2. The `Hello` response to arrive before the `NameAcquired` signal.
+        let unique_name = peer.unique_name().clone();
+        let (response, listener) = ResponseDispatchNotifier::new(unique_name.clone());
+        let ctxt = ctxt.to_owned();
+        spawn(async move {
+            listener.await;
+            let owner = UniqueName::from(unique_name);
 
-                    return;
-                }
+            if let Err(e) = Self::name_owner_changed(
+                &ctxt,
+                owner.clone().into(),
+                None.into(),
+                Some(owner.clone()).into(),
+            )
+            .await
+            {
+                warn!("Failed to notify peers of name change: {}", e);
+            }
 
-                let changed = NameOwnerChanged {
-                    name: BusName::from(unique_name.clone()).into(),
-                    old_owner: None,
-                    new_owner: Some(unique_name.clone()),
-                };
-                if let Err(e) = peers.notify_name_changes(changed).await {
-                    warn!("Failed to notify peers of name change: {}", e);
-                }
-            });
+            let ctxt = ctxt.set_destination(owner.clone().into());
+            if let Err(e) = Self::name_acquired(&ctxt, owner.into()).await {
+                warn!("Failed to send `NameAcquired` signal: {}", e);
+            }
+        });
 
-            Ok(response)
-        }
+        Ok(response)
     }
 
     /// Ask the message bus to assign the given name to the method caller.
@@ -111,12 +110,14 @@ impl DBus {
         &self,
         name: WellKnownName<'_>,
         flags: BitFlags<RequestNameFlags>,
+        #[zbus(header)] hdr: MessageHeader<'_>,
     ) -> Result<RequestNameReply> {
+        let unique_name = msg_sender(&hdr);
         let peers = self.peers()?;
         let (reply, name_owner_changed) = peers
             .name_registry_mut()
             .await
-            .request_name(name, self.unique_name.inner().clone(), flags)
+            .request_name(name, unique_name.clone(), flags)
             .await;
         if let Some(changed) = name_owner_changed {
             peers
@@ -129,12 +130,17 @@ impl DBus {
     }
 
     /// Ask the message bus to release the method caller's claim to the given name.
-    async fn release_name(&self, name: WellKnownName<'_>) -> Result<ReleaseNameReply> {
+    async fn release_name(
+        &self,
+        name: WellKnownName<'_>,
+        #[zbus(header)] hdr: MessageHeader<'_>,
+    ) -> Result<ReleaseNameReply> {
+        let unique_name = msg_sender(&hdr);
         let peers = self.peers()?;
         let (reply, name_owner_changed) = peers
             .name_registry_mut()
             .await
-            .release_name(name, self.unique_name.inner().clone())
+            .release_name(name, unique_name.clone())
             .await;
         if let Some(changed) = name_owner_changed {
             peers
@@ -148,10 +154,6 @@ impl DBus {
 
     /// Returns the unique connection name of the primary owner of the name given.
     async fn get_name_owner(&self, name: BusName<'_>) -> Result<OwnedUniqueName> {
-        if name == BUS_NAME {
-            return Ok(self.unique_name.clone());
-        }
-
         let peers = self.peers()?;
         match name {
             BusName::WellKnown(name) => peers.name_registry().await.lookup(name).ok_or_else(|| {
@@ -170,18 +172,29 @@ impl DBus {
     }
 
     /// Adds a match rule to match messages going through the message bus
-    async fn add_match(&mut self, rule: OwnedMatchRule) -> Result<()> {
-        self.call_mut_on_peer(move |peer| {
-            peer.add_match_rule(rule);
+    async fn add_match(
+        &self,
+        rule: OwnedMatchRule,
+        #[zbus(header)] hdr: MessageHeader<'_>,
+    ) -> Result<()> {
+        self.call_mut_on_peer(
+            move |peer| {
+                peer.add_match_rule(rule);
 
-            Ok(())
-        })
+                Ok(())
+            },
+            hdr,
+        )
         .await
     }
 
     /// Removes the first rule that matches.
-    async fn remove_match(&mut self, rule: OwnedMatchRule) -> Result<()> {
-        self.call_mut_on_peer(move |peer| peer.remove_match_rule(rule))
+    async fn remove_match(
+        &self,
+        rule: OwnedMatchRule,
+        #[zbus(header)] hdr: MessageHeader<'_>,
+    ) -> Result<()> {
+        self.call_mut_on_peer(move |peer| peer.remove_match_rule(rule), hdr)
             .await
     }
 
@@ -264,15 +277,13 @@ impl DBus {
     /// Returns a list of all currently-owned names on the bus.
     async fn list_names(&self) -> Result<Vec<OwnedBusName>> {
         let peers = self.peers()?;
-        let mut names = vec![BUS_NAME.try_into().unwrap()];
-        names.extend(
-            peers
-                .peers()
-                .await
-                .keys()
-                .cloned()
-                .map(|n| BusName::Unique(n.into()).into()),
-        );
+        let mut names: Vec<_> = peers
+            .peers()
+            .await
+            .keys()
+            .cloned()
+            .map(|n| BusName::Unique(n.into()).into())
+            .collect();
 
         names.extend(
             peers
@@ -389,40 +400,4 @@ impl DBus {
         signal_ctxt: &SignalContext<'_>,
         name: BusName<'_>,
     ) -> zbus::Result<()>;
-}
-
-/// Custom type for `Hello` method response.
-///
-/// We need to ensure that the `NameAcquired` signal is not sent out before the response so we
-/// return this from the method and when zbus is done sending it, it will drop it and we can then
-/// send the signal.
-#[derive(Debug)]
-struct HelloResponse {
-    name: OwnedUniqueName,
-    tx: Option<oneshot::Sender<()>>,
-}
-
-impl Serialize for HelloResponse {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.name.serialize(serializer)
-    }
-}
-
-impl Type for HelloResponse {
-    fn signature() -> Signature<'static> {
-        UniqueName::signature()
-    }
-}
-
-impl Drop for HelloResponse {
-    fn drop(&mut self) {
-        if let Some(tx) = self.tx.take() {
-            if let Err(e) = tx.send(()) {
-                debug!("{e:?}");
-            }
-        }
-    }
 }

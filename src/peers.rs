@@ -1,28 +1,34 @@
 use anyhow::{bail, Context, Result};
-use futures_util::{stream::StreamExt, SinkExt};
+use event_listener::EventListener;
+use futures_util::{
+    future::{select, Either},
+    stream::StreamExt,
+    SinkExt,
+};
 use std::{
     collections::BTreeMap,
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use tokio::sync::RwLock;
+use tokio::{spawn, sync::RwLock};
 use tracing::{debug, trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
     zvariant::Optional,
-    AuthMechanism, Guid, MessageBuilder, MessageField, MessageFieldCode, MessageType,
-    SignalContext, Socket,
+    AuthMechanism, Guid, MessageBuilder, MessageField, MessageFieldCode, MessageType, Socket,
 };
 
 use crate::{
-    fdo::{self, DBus},
+    fdo,
+    match_rules::MatchRules,
     name_registry::{NameOwnerChanged, NameRegistry},
-    peer::{Peer, Stream},
+    peer::{Monitor, Peer, Stream},
 };
 
 #[derive(Debug)]
 pub struct Peers {
     peers: RwLock<BTreeMap<OwnedUniqueName, Peer>>,
+    monitors: RwLock<BTreeMap<OwnedUniqueName, Monitor>>,
     name_registry: RwLock<NameRegistry>,
 }
 
@@ -32,6 +38,7 @@ impl Peers {
 
         Arc::new(Self {
             peers: RwLock::new(BTreeMap::new()),
+            monitors: RwLock::new(BTreeMap::new()),
             name_registry: RwLock::new(name_registry),
         })
     }
@@ -44,7 +51,7 @@ impl Peers {
         auth_mechanism: AuthMechanism,
     ) -> Result<()> {
         let mut peers = self.peers_mut().await;
-        let peer = Peer::new(guid.clone(), id, socket, auth_mechanism, self.clone()).await?;
+        let peer = Peer::new(guid.clone(), id, socket, auth_mechanism).await?;
         let unique_name = peer.unique_name().clone();
         match peers.get(&unique_name) {
             Some(peer) => panic!(
@@ -53,7 +60,11 @@ impl Peers {
             ),
             None => {
                 let peer_stream = peer.stream();
-                tokio::spawn(self.clone().serve_peer(peer_stream, unique_name.clone()));
+                let listener = peer.listen_cancellation();
+                tokio::spawn(
+                    self.clone()
+                        .serve_peer(peer_stream, listener, unique_name.clone()),
+                );
                 peers.insert(unique_name.clone(), peer);
             }
         }
@@ -77,13 +88,47 @@ impl Peers {
         self.name_registry.write().await
     }
 
+    pub async fn make_monitor(
+        self: &Arc<Self>,
+        peer_name: &UniqueName<'_>,
+        match_rules: MatchRules,
+    ) -> bool {
+        let monitor = {
+            let mut peers = self.peers_mut().await;
+            let peer = match peers.remove(peer_name.as_str()) {
+                Some(peer) => peer,
+                None => {
+                    return false;
+                }
+            };
+
+            peer.become_monitor(match_rules)
+        };
+
+        let monitor_monitoring_fut = monitor.monitor();
+        let unique_name = monitor.unique_name().clone();
+        let peers = self.clone();
+        self.monitors
+            .write()
+            .await
+            .insert(unique_name.clone(), monitor);
+
+        spawn(async move {
+            monitor_monitoring_fut.await;
+            peers.monitors.write().await.remove(&unique_name);
+            debug!("Monitor {} disconnected", unique_name);
+        });
+
+        true
+    }
+
     pub async fn notify_name_changes(&self, name_owner_changed: NameOwnerChanged) -> Result<()> {
         let name = BusName::from(name_owner_changed.name);
         let old_owner = name_owner_changed.old_owner.map(UniqueName::from);
         let new_owner = name_owner_changed.new_owner.map(UniqueName::from);
 
         // First broadcast the name change signal.
-        let msg = MessageBuilder::signal(fdo::DBUS_PATH, fdo::DBUS_INTERFACE, "NameOwnerChanged")
+        let msg = MessageBuilder::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameOwnerChanged")
             .unwrap()
             .sender(fdo::BUS_NAME)
             .unwrap()
@@ -95,31 +140,34 @@ impl Peers {
         self.broadcast_msg(Arc::new(msg)).await;
 
         // Now unicast the appropriate signal to the old and new owners.
-        let peers = self.peers().await;
         if let Some(old_owner) = old_owner {
-            match peers.get(&*old_owner) {
-                Some(peer) => {
-                    let signal_ctxt = SignalContext::new(peer.conn(), fdo::DBUS_PATH)
-                        .unwrap()
-                        .set_destination(old_owner.into());
-                    DBus::name_lost(&signal_ctxt, name.clone()).await?;
-                }
-                None => {
-                    warn!("Couldn't notify inexistant peer {old_owner} about loosing name {name}")
-                }
+            let msg = MessageBuilder::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameLost")
+                .unwrap()
+                .sender(fdo::BUS_NAME)
+                .unwrap()
+                .destination(old_owner.clone())
+                .unwrap()
+                .build(&name)?;
+            if let Err(e) = self
+                .send_msg_to_unique_name(Arc::new(msg), old_owner.clone())
+                .await
+            {
+                warn!("Couldn't notify inexistant peer {old_owner} about loosing name {name}: {e}")
             }
         }
         if let Some(new_owner) = new_owner {
-            match peers.get(&*new_owner) {
-                Some(peer) => {
-                    let signal_ctxt = SignalContext::new(peer.conn(), fdo::DBUS_PATH)
-                        .unwrap()
-                        .set_destination(new_owner.into());
-                    DBus::name_acquired(&signal_ctxt, name.clone()).await?;
-                }
-                None => {
-                    warn!("Couldn't notify inexistant peer {new_owner} about acquiring name {name}")
-                }
+            let msg = MessageBuilder::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameAcquired")
+                .unwrap()
+                .sender(fdo::BUS_NAME)
+                .unwrap()
+                .destination(new_owner.clone())
+                .unwrap()
+                .build(&name)?;
+            if let Err(e) = self
+                .send_msg_to_unique_name(Arc::new(msg), new_owner.clone())
+                .await
+            {
+                warn!("Couldn't notify peer {new_owner} about acquiring name {name}: {e}")
             }
         }
 
@@ -129,15 +177,27 @@ impl Peers {
     async fn serve_peer(
         self: Arc<Self>,
         mut peer_stream: Stream,
+        mut cancellation_listener: EventListener,
         unique_name: OwnedUniqueName,
     ) -> Result<()> {
-        while let Some(msg) = peer_stream.next().await {
-            let msg = match msg {
-                Ok(msg) => msg,
-                Err(e) => {
-                    debug!("{e}");
+        loop {
+            let msg = match select(cancellation_listener, peer_stream.next()).await {
+                Either::Left(_) | Either::Right((None, _)) => {
+                    trace!("Peer `{}` disconnected", unique_name);
 
-                    continue;
+                    break;
+                }
+                Either::Right((Some(msg), listener)) => {
+                    cancellation_listener = listener;
+
+                    match msg {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            debug!("{e}");
+
+                            continue;
+                        }
+                    }
                 }
             };
 
@@ -155,8 +215,12 @@ impl Peers {
             };
         }
 
-        // Stream is done means the peer disconnected. Remove it from the list of peers.
-        self.peers_mut().await.remove(&unique_name);
+        // Stream is done means the peer disconnected or it became a monitor. Remove it from the
+        // list of peers.
+        if self.peers_mut().await.remove(&unique_name).is_none() {
+            // This means peer was turned into a monitor. `Monitoring` iface will emit the signals.
+            return Ok(());
+        }
         let names_changes = self
             .name_registry_mut()
             .await
@@ -205,23 +269,60 @@ impl Peers {
             .get(destination.as_str())
             .map(|peer| peer.conn().clone());
         match conn {
-            Some(mut conn) => conn.send(msg).await.context("failed to send message")?,
+            Some(mut conn) => conn
+                .send(msg.clone())
+                .await
+                .context("failed to send message")?,
             None => debug!("no peer for destination `{destination}`"),
         }
+        let name_registry = self.name_registry().await;
+        self.broadcast_to_monitors(msg, &name_registry).await;
 
         Ok(())
     }
 
     async fn broadcast_msg(&self, msg: Arc<zbus::Message>) {
-        trace!("Braadcasting message: {:?}", msg);
+        trace!("Broadcasting message: {:?}", msg);
         let name_registry = self.name_registry().await;
         for peer in self.peers.read().await.values() {
-            if !peer.interested(&msg, &name_registry).await {
+            if !peer.interested(&msg, &name_registry) {
                 trace!("Peer {} not interested in {msg:?}", peer.unique_name());
                 continue;
             }
 
             if let Err(e) = peer
+                .conn()
+                .send(msg.clone())
+                .await
+                .context("failed to send message")
+            {
+                warn!("Error sending message: {}", e);
+            }
+        }
+
+        self.broadcast_to_monitors(msg, &name_registry).await;
+    }
+
+    async fn broadcast_to_monitors(&self, msg: Arc<zbus::Message>, name_registry: &NameRegistry) {
+        let monitors = self.monitors.read().await;
+        if monitors.is_empty() {
+            return;
+        }
+        trace!(
+            "Broadcasting message to {} monitors: {:?}",
+            monitors.len(),
+            msg
+        );
+        for monitor in monitors.values() {
+            if !monitor.interested(&msg, name_registry) {
+                trace!(
+                    "Monitor {} not interested in {msg:?}",
+                    monitor.unique_name()
+                );
+                continue;
+            }
+
+            if let Err(e) = monitor
                 .conn()
                 .send(msg.clone())
                 .await
