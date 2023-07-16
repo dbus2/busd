@@ -1,5 +1,7 @@
 mod dbus;
 pub use dbus::*;
+mod monitoring;
+pub use monitoring::*;
 use zbus::{names::UniqueName, MessageHeader};
 
 pub const BUS_NAME: &str = "org.freedesktop.DBus";

@@ -18,7 +18,7 @@ use tracing::{debug, info, trace, warn};
 use zbus::{Address, AuthMechanism, Connection, ConnectionBuilder, Guid, Socket, TcpAddress};
 
 use crate::{
-    fdo::{self, DBus},
+    fdo::{self, DBus, Monitoring},
     peers::Peers,
 };
 
@@ -84,12 +84,14 @@ impl Bus {
         trace!("Creating self-dial connection.");
         let guid = bus.guid().clone();
         let dbus = DBus::new(bus.peers().clone(), guid.clone());
+        let monitoring = Monitoring::new(bus.peers().clone());
         let conn_builder_fut = ConnectionBuilder::address(address)?
             .auth_mechanisms(&[auth_mechanism])
             .p2p()
             .unique_name(fdo::BUS_NAME)?
             .name(fdo::BUS_NAME)?
             .serve_at(fdo::DBus::PATH, dbus)?
+            .serve_at(fdo::Monitoring::PATH, monitoring)?
             .build()
             .map_err(Into::into);
 

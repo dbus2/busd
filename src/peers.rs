@@ -10,7 +10,7 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use tokio::sync::RwLock;
+use tokio::{spawn, sync::RwLock};
 use tracing::{debug, trace, warn};
 use zbus::{
     names::{BusName, OwnedUniqueName, UniqueName},
@@ -20,13 +20,15 @@ use zbus::{
 
 use crate::{
     fdo,
+    match_rules::MatchRules,
     name_registry::{NameOwnerChanged, NameRegistry},
-    peer::{Peer, Stream},
+    peer::{Monitor, Peer, Stream},
 };
 
 #[derive(Debug)]
 pub struct Peers {
     peers: RwLock<BTreeMap<OwnedUniqueName, Peer>>,
+    monitors: RwLock<BTreeMap<OwnedUniqueName, Monitor>>,
     name_registry: RwLock<NameRegistry>,
 }
 
@@ -36,6 +38,7 @@ impl Peers {
 
         Arc::new(Self {
             peers: RwLock::new(BTreeMap::new()),
+            monitors: RwLock::new(BTreeMap::new()),
             name_registry: RwLock::new(name_registry),
         })
     }
@@ -83,6 +86,40 @@ impl Peers {
 
     pub async fn name_registry_mut(&self) -> impl DerefMut<Target = NameRegistry> + '_ {
         self.name_registry.write().await
+    }
+
+    pub async fn make_monitor(
+        self: &Arc<Self>,
+        peer_name: &UniqueName<'_>,
+        match_rules: MatchRules,
+    ) -> bool {
+        let monitor = {
+            let mut peers = self.peers_mut().await;
+            let peer = match peers.remove(peer_name.as_str()) {
+                Some(peer) => peer,
+                None => {
+                    return false;
+                }
+            };
+
+            peer.become_monitor(match_rules)
+        };
+
+        let monitor_monitoring_fut = monitor.monitor();
+        let unique_name = monitor.unique_name().clone();
+        let peers = self.clone();
+        self.monitors
+            .write()
+            .await
+            .insert(unique_name.clone(), monitor);
+
+        spawn(async move {
+            monitor_monitoring_fut.await;
+            peers.monitors.write().await.remove(&unique_name);
+            debug!("Monitor {} disconnected", unique_name);
+        });
+
+        true
     }
 
     pub async fn notify_name_changes(&self, name_owner_changed: NameOwnerChanged) -> Result<()> {
@@ -178,8 +215,12 @@ impl Peers {
             };
         }
 
-        // Stream is done means the peer disconnected. Remove it from the list of peers.
-        self.peers_mut().await.remove(&unique_name);
+        // Stream is done means the peer disconnected or it became a monitor. Remove it from the
+        // list of peers.
+        if self.peers_mut().await.remove(&unique_name).is_none() {
+            // This means peer was turned into a monitor. `Monitoring` iface will emit the signals.
+            return Ok(());
+        }
         let names_changes = self
             .name_registry_mut()
             .await
@@ -228,9 +269,14 @@ impl Peers {
             .get(destination.as_str())
             .map(|peer| peer.conn().clone());
         match conn {
-            Some(mut conn) => conn.send(msg).await.context("failed to send message")?,
+            Some(mut conn) => conn
+                .send(msg.clone())
+                .await
+                .context("failed to send message")?,
             None => debug!("no peer for destination `{destination}`"),
         }
+        let name_registry = self.name_registry().await;
+        self.broadcast_to_monitors(msg, &name_registry).await;
 
         Ok(())
     }
@@ -245,6 +291,38 @@ impl Peers {
             }
 
             if let Err(e) = peer
+                .conn()
+                .send(msg.clone())
+                .await
+                .context("failed to send message")
+            {
+                warn!("Error sending message: {}", e);
+            }
+        }
+
+        self.broadcast_to_monitors(msg, &name_registry).await;
+    }
+
+    async fn broadcast_to_monitors(&self, msg: Arc<zbus::Message>, name_registry: &NameRegistry) {
+        let monitors = self.monitors.read().await;
+        if monitors.is_empty() {
+            return;
+        }
+        trace!(
+            "Broadcasting message to {} monitors: {:?}",
+            monitors.len(),
+            msg
+        );
+        for monitor in monitors.values() {
+            if !monitor.interested(&msg, name_registry) {
+                trace!(
+                    "Monitor {} not interested in {msg:?}",
+                    monitor.unique_name()
+                );
+                continue;
+            }
+
+            if let Err(e) = monitor
                 .conn()
                 .send(msg.clone())
                 .await
