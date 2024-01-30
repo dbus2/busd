@@ -18,8 +18,8 @@ pub struct Monitoring {
 }
 
 impl Monitoring {
-    pub const PATH: &str = "/org/freedesktop/DBus";
-    pub const INTERFACE: &str = "org.freedesktop.DBus.Monitoring";
+    pub const PATH: &'static str = "/org/freedesktop/DBus";
+    pub const INTERFACE: &'static str = "org.freedesktop.DBus.Monitoring";
 
     pub fn new(peers: Arc<Peers>) -> Self {
         Self {

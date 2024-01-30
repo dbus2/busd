@@ -26,8 +26,8 @@ pub struct DBus {
 }
 
 impl DBus {
-    pub const PATH: &str = "/org/freedesktop/DBus";
-    pub const INTERFACE: &str = "org.freedesktop.DBus";
+    pub const PATH: &'static str = "/org/freedesktop/DBus";
+    pub const INTERFACE: &'static str = "org.freedesktop.DBus";
 
     pub fn new(peers: Arc<Peers>, guid: Arc<Guid>) -> Self {
         Self {
