@@ -16,7 +16,7 @@ impl MatchRules {
     ///
     /// if header, SENDER or DESTINATION is not set.
     pub fn matches(&self, msg: &zbus::Message, name_registry: &NameRegistry) -> bool {
-        let hdr = msg.header().expect("received message without header");
+        let hdr = msg.header();
 
         let ret = self.0.iter().any(|rule| {
             // First make use of zbus API
@@ -36,25 +36,14 @@ impl MatchRules {
                 // Unique name is already taken care of by the zbus API.
                 BusName::Unique(_) => None,
             }) {
-                if sender
-                    != hdr
-                        .sender()
-                        .expect("SENDER field unset")
-                        .expect("SENDER field unset")
-                        .clone()
-                {
+                if sender != hdr.sender().expect("SENDER field unset").clone() {
                     return false;
                 }
             }
 
             // The destination.
             if let Some(destination) = rule.destination() {
-                match hdr
-                    .destination()
-                    .expect("DESTINATION field unset")
-                    .expect("DESTINATION field unset")
-                    .clone()
-                {
+                match hdr.destination().expect("DESTINATION field unset").clone() {
                     BusName::WellKnown(name) => match name_registry.lookup(name) {
                         Some(name) if name == *destination => (),
                         Some(_) => return false,

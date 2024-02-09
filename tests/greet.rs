@@ -11,8 +11,8 @@ use rand::{
 use tokio::{select, sync::mpsc::channel, time::timeout};
 use tracing::instrument;
 use zbus::{
-    dbus_interface, dbus_proxy,
     fdo::{self, DBusProxy},
+    interface, proxy,
     zvariant::ObjectPath,
     AsyncDrop, AuthMechanism, CacheProperties, Connection, ConnectionBuilder, MatchRule,
     MessageHeader, MessageStream, SignalContext,
@@ -73,7 +73,7 @@ async fn greet_service(socket_addr: &str) -> anyhow::Result<Connection> {
         count: u64,
     }
 
-    #[dbus_interface(name = "org.zbus.MyGreeter1")]
+    #[interface(name = "org.zbus.MyGreeter1")]
     impl Greeter {
         async fn say_hello(
             &mut self,
@@ -82,7 +82,7 @@ async fn greet_service(socket_addr: &str) -> anyhow::Result<Connection> {
             #[zbus(header)] header: MessageHeader<'_>,
         ) -> fdo::Result<String> {
             self.count += 1;
-            let path = header.path()?.unwrap().clone();
+            let path = header.path().unwrap().clone();
             Self::greeted(&ctxt, name, self.count, path).await?;
             Ok(format!(
                 "Hello {}! I have been called {} times.",
@@ -90,7 +90,7 @@ async fn greet_service(socket_addr: &str) -> anyhow::Result<Connection> {
             ))
         }
 
-        #[dbus_interface(signal)]
+        #[zbus(signal)]
         async fn greeted(
             ctxt: &SignalContext<'_>,
             name: &str,
@@ -110,14 +110,14 @@ async fn greet_service(socket_addr: &str) -> anyhow::Result<Connection> {
 
 #[instrument]
 async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
-    #[dbus_proxy(
+    #[proxy(
         interface = "org.zbus.MyGreeter1",
         default_path = "/org/zbus/MyGreeter"
     )]
     trait MyGreeter {
         fn say_hello(&self, name: &str) -> zbus::Result<String>;
 
-        #[dbus_proxy(signal)]
+        #[zbus(signal)]
         async fn greeted(name: &str, count: u64, path: ObjectPath<'_>);
     }
 

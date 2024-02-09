@@ -7,15 +7,18 @@ use futures_util::{
 };
 use std::{cell::OnceCell, str::FromStr, sync::Arc};
 #[cfg(unix)]
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use std::{env, path::Path};
 #[cfg(unix)]
 use tokio::fs::remove_file;
 use tokio::{spawn, task::JoinHandle};
 use tracing::{debug, info, trace, warn};
-use zbus::{Address, AuthMechanism, Connection, ConnectionBuilder, Guid, Socket, TcpAddress};
+#[cfg(unix)]
+use zbus::address::transport::{Unix, UnixSocket};
+use zbus::{
+    address::{transport::Tcp, Transport},
+    connection::socket::BoxedSplit,
+    Address, AuthMechanism, Connection, ConnectionBuilder, Guid, OwnedGuid,
+};
 
 use crate::{
     fdo::{self, DBus, Monitoring},
@@ -35,7 +38,7 @@ pub struct Bus {
 pub struct Inner {
     address: Address,
     peers: Arc<Peers>,
-    guid: Arc<Guid>,
+    guid: OwnedGuid,
     next_id: Option<usize>,
     auth_mechanism: AuthMechanism,
     self_conn: OnceCell<Connection>,
@@ -44,45 +47,38 @@ pub struct Inner {
 #[derive(Debug)]
 enum Listener {
     #[cfg(unix)]
-    Unix {
-        listener: tokio::net::UnixListener,
-        socket_path: PathBuf,
-    },
-    Tcp {
-        listener: tokio::net::TcpListener,
-    },
+    Unix(tokio::net::UnixListener),
+    Tcp(tokio::net::TcpListener),
 }
 
 impl Bus {
     pub async fn for_address(address: Option<&str>, auth_mechanism: AuthMechanism) -> Result<Self> {
-        let address = match address {
-            Some(address) => address.to_string(),
-            None => default_address(),
+        let mut address = match address {
+            Some(address) => Address::from_str(address)?,
+            None => Address::from_str(&default_address())?,
         };
-        let address = Address::from_str(&address)?;
-        let listener = match &address {
+        let guid: OwnedGuid = match address.guid() {
+            Some(guid) => guid.to_owned().into(),
+            None => {
+                let guid = Guid::generate();
+                address = address.set_guid(guid.clone())?;
+
+                guid.into()
+            }
+        };
+        let listener = match address.transport() {
             #[cfg(unix)]
-            Address::Unix(path) => {
-                let path = Path::new(&path);
-                info!("Listening on {}.", path.display());
-
-                Self::unix_stream(path).await
-            }
-            Address::Tcp(address) => {
-                info!("Listening on `{}:{}`.", address.host(), address.port());
-
-                Self::tcp_stream(address).await
-            }
-            Address::NonceTcp { .. } => bail!("`nonce-tcp` transport is not supported (yet)."),
-            Address::Autolaunch(_) => bail!("`autolaunch` transport is not supported (yet)."),
+            Transport::Unix(unix) => Self::unix_stream(unix).await,
+            Transport::Tcp(tcp) => Self::tcp_stream(tcp).await,
+            #[cfg(windows)]
+            Transport::Autolaunch(_) => bail!("`autolaunch` transport is not supported (yet)."),
             _ => bail!("Unsupported address `{}`.", address),
         }?;
 
-        let mut bus = Self::new(address.clone(), listener, auth_mechanism).await?;
+        let mut bus = Self::new(address.clone(), guid.clone(), listener, auth_mechanism).await?;
 
         // Create a peer for ourselves.
         trace!("Creating self-dial connection.");
-        let guid = bus.guid().clone();
         let dbus = DBus::new(bus.peers().clone(), guid.clone());
         let monitoring = Monitoring::new(bus.peers().clone());
         let conn_builder_fut = ConnectionBuilder::address(address)?
@@ -114,17 +110,19 @@ impl Bus {
 
     // AsyncDrop would have been nice!
     pub async fn cleanup(self) -> Result<()> {
-        match self.listener {
+        match self.inner.address.transport() {
             #[cfg(unix)]
-            Listener::Unix { socket_path, .. } => {
-                remove_file(socket_path).await.map_err(Into::into)
-            }
-            Listener::Tcp { .. } => Ok(()),
+            Transport::Unix(unix) => match unix.path() {
+                UnixSocket::File(path) => remove_file(path).await.map_err(Into::into),
+                _ => Ok(()),
+            },
+            _ => Ok(()),
         }
     }
 
     async fn new(
         address: Address,
+        guid: OwnedGuid,
         listener: Listener,
         auth_mechanism: AuthMechanism,
     ) -> Result<Self> {
@@ -142,7 +140,7 @@ impl Bus {
             inner: Inner {
                 address,
                 peers: Peers::new(),
-                guid: Arc::new(Guid::generate()),
+                guid,
                 next_id: None,
                 auth_mechanism,
                 self_conn: OnceCell::new(),
@@ -151,23 +149,59 @@ impl Bus {
     }
 
     #[cfg(unix)]
-    async fn unix_stream(socket_path: &Path) -> Result<Listener> {
-        let socket_path = socket_path.to_path_buf();
-        let listener = Listener::Unix {
-            listener: tokio::net::UnixListener::bind(&socket_path)?,
-            socket_path,
-        };
+    async fn unix_stream(unix: &Unix) -> Result<Listener> {
+        // TODO: Use tokio::net::UnixListener directly once it supports abstract sockets:
+        //
+        // https://github.com/tokio-rs/tokio/issues/4610
 
-        Ok(listener)
+        use std::os::unix::net::SocketAddr;
+
+        let addr = match unix.path() {
+            #[cfg(target_os = "linux")]
+            UnixSocket::Abstract(name) => {
+                use std::os::linux::net::SocketAddrExt;
+
+                let addr = SocketAddr::from_abstract_name(name.as_encoded_bytes())?;
+                info!(
+                    "Listening on abstract UNIX socket `{}`.",
+                    name.to_string_lossy()
+                );
+
+                addr
+            }
+            UnixSocket::File(path) => {
+                let addr = SocketAddr::from_pathname(path)?;
+                info!(
+                    "Listening on UNIX socket file `{}`.",
+                    path.to_string_lossy()
+                );
+
+                addr
+            }
+            UnixSocket::Dir(_) => bail!("`dir` transport is not supported (yet)."),
+            UnixSocket::TmpDir(_) => bail!("`tmpdir` transport is not supported (yet)."),
+            _ => bail!("Unsupported address."),
+        };
+        let std_listener =
+            tokio::task::spawn_blocking(move || std::os::unix::net::UnixListener::bind_addr(&addr))
+                .await??;
+        std_listener.set_nonblocking(true)?;
+        tokio::net::UnixListener::from_std(std_listener)
+            .map(Listener::Unix)
+            .map_err(Into::into)
     }
 
-    async fn tcp_stream(address: &TcpAddress) -> Result<Listener> {
-        let address = (address.host(), address.port());
-        let listener = Listener::Tcp {
-            listener: tokio::net::TcpListener::bind(address).await?,
-        };
+    async fn tcp_stream(tcp: &Tcp) -> Result<Listener> {
+        if tcp.nonce_file().is_some() {
+            bail!("`nonce-tcp` transport is not supported (yet).");
+        }
+        info!("Listening on `{}:{}`.", tcp.host(), tcp.port());
+        let address = (tcp.host(), tcp.port());
 
-        Ok(listener)
+        tokio::net::TcpListener::bind(address)
+            .await
+            .map(Listener::Tcp)
+            .map_err(Into::into)
     }
 
     async fn accept_next(&mut self) -> Result<()> {
@@ -203,35 +237,22 @@ impl Bus {
         Ok(())
     }
 
-    async fn accept(&mut self) -> Result<Box<dyn Socket + 'static>> {
-        match &mut self.listener {
+    async fn accept(&mut self) -> Result<BoxedSplit> {
+        let stream = match &mut self.listener {
             #[cfg(unix)]
-            Listener::Unix {
-                listener,
-                socket_path,
-            } => {
-                let (unix_stream, _) = listener.accept().await?;
-                debug!(
-                    "Accepted connection on socket file {}",
-                    socket_path.display()
-                );
+            Listener::Unix(listener) => listener.accept().await.map(|(stream, _)| stream.into())?,
+            Listener::Tcp(listener) => listener.accept().await.map(|(stream, _)| stream.into())?,
+        };
+        debug!("Accepted connection on address `{}`", self.inner.address);
 
-                Ok(Box::new(unix_stream))
-            }
-            Listener::Tcp { listener } => {
-                let (tcp_stream, addr) = listener.accept().await?;
-                debug!("Accepted connection from {addr}");
-
-                Ok(Box::new(tcp_stream))
-            }
-        }
+        Ok(stream)
     }
 
     pub fn peers(&self) -> &Arc<Peers> {
         &self.inner.peers
     }
 
-    pub fn guid(&self) -> &Arc<Guid> {
+    pub fn guid(&self) -> &OwnedGuid {
         &self.inner.guid
     }
 

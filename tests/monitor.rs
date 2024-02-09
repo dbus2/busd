@@ -95,20 +95,21 @@ async fn become_monitor_client(address: &str, tx: Sender<()>) -> anyhow::Result<
     let mut request_name_serial = None;
     while num_received < 8 {
         let msg = msg_stream.try_next().await?.unwrap();
-        let member = msg.member();
+        let header = msg.header();
+        let member = header.member();
 
         match msg.message_type() {
             MessageType::MethodCall => match member.unwrap().as_str() {
                 "Hello" => {
-                    hello_serial = msg.primary_header().serial_num().cloned();
+                    hello_serial = Some(msg.primary_header().serial_num());
                 }
                 "RequestName" => {
-                    request_name_serial = msg.primary_header().serial_num().cloned();
+                    request_name_serial = Some(msg.primary_header().serial_num());
                 }
                 method => panic!("unexpected method call: {}", method),
             },
             MessageType::MethodReturn => {
-                let serial = msg.reply_serial();
+                let serial = header.reply_serial();
                 if serial == hello_serial {
                     hello_serial = None;
                 } else if serial == request_name_serial {

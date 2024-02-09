@@ -4,13 +4,11 @@ pub use stream::*;
 mod monitor;
 pub use monitor::*;
 
-use std::sync::Arc;
-
 use anyhow::Result;
 use tracing::trace;
 use zbus::{
-    names::OwnedUniqueName, AuthMechanism, Connection, ConnectionBuilder, Guid, OwnedMatchRule,
-    Socket,
+    connection::socket::BoxedSplit, names::OwnedUniqueName, AuthMechanism, Connection,
+    ConnectionBuilder, OwnedGuid, OwnedMatchRule,
 };
 
 use crate::{fdo, match_rules::MatchRules, name_registry::NameRegistry};
@@ -27,9 +25,9 @@ pub struct Peer {
 
 impl Peer {
     pub async fn new(
-        guid: Arc<Guid>,
+        guid: OwnedGuid,
         id: Option<usize>,
-        socket: Box<dyn Socket + 'static>,
+        socket: BoxedSplit,
         auth_mechanism: AuthMechanism,
     ) -> Result<Self> {
         let unique_name = match id {
@@ -37,7 +35,7 @@ impl Peer {
             None => OwnedUniqueName::try_from(fdo::BUS_NAME).unwrap(),
         };
         let conn = ConnectionBuilder::socket(socket)
-            .server(&guid)
+            .server(guid)?
             .p2p()
             .auth_mechanisms(&[auth_mechanism])
             .build()
