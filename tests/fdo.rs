@@ -1,9 +1,11 @@
+#[cfg(unix)]
 use std::env::temp_dir;
 
 use anyhow::ensure;
 use busd::bus::Bus;
 use futures_util::stream::StreamExt;
 use ntest::timeout;
+#[cfg(unix)]
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,

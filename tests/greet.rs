@@ -1,9 +1,12 @@
-use std::{env::temp_dir, time::Duration};
+#[cfg(unix)]
+use std::env::temp_dir;
+use std::time::Duration;
 
 use anyhow::anyhow;
 use busd::bus::Bus;
 use futures_util::{pin_mut, stream::StreamExt};
 use ntest::timeout;
+#[cfg(unix)]
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
