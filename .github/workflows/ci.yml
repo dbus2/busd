@@ -65,4 +65,4 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Check common mistakes
-        run: cargo clippy --all -- -D warnings
+        run: cargo clippy --tests --all -- -D warnings
