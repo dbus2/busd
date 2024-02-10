@@ -12,6 +12,7 @@ jobs:
     env:
       RUST_LOG: "trace"
       RUST_BACKTRACE: "full"
+      RUSTFLAGS: -D warnings
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
