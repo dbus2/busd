@@ -16,7 +16,7 @@ use zbus::{
 async fn become_monitor() {
     busd::tracing_subscriber::init();
 
-    let address = format!("tcp:host=127.0.0.1,port=4242");
+    let address = "tcp:host=127.0.0.1,port=4242".to_string();
     let mut bus = Bus::for_address(Some(&address), AuthMechanism::Anonymous)
         .await
         .unwrap();
@@ -57,10 +57,9 @@ async fn become_monitor_client(address: &str, tx: Sender<()>) -> anyhow::Result<
     // Signals for the monitor loosing its unique name.
     let signal = loop {
         let msg = msg_stream.try_next().await?.unwrap();
-        match NameOwnerChanged::from_message(msg) {
-            Some(signal) => break signal,
-            // Ignore other messages (e.g `BecomeMonitor` method & reply)
-            None => (),
+        // Ignore other messages (e.g `BecomeMonitor` method & reply)
+        if let Some(signal) = NameOwnerChanged::from_message(msg) {
+            break signal;
         }
     };
     let args = signal.args()?;
