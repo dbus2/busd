@@ -16,7 +16,7 @@ use zbus::{
 async fn become_monitor() {
     busd::tracing_subscriber::init();
 
-    let address = format!("tcp:host=127.0.0.1,port=4242");
+    let address = "tcp:host=127.0.0.1,port=4242".to_string();
     let mut bus = Bus::for_address(Some(&address), AuthMechanism::Anonymous)
         .await
         .unwrap();
@@ -57,10 +57,9 @@ async fn become_monitor_client(address: &str, tx: Sender<()>) -> anyhow::Result<
     // Signals for the monitor loosing its unique name.
     let signal = loop {
         let msg = msg_stream.try_next().await?.unwrap();
-        match NameOwnerChanged::from_message(msg) {
-            Some(signal) => break signal,
-            // Ignore other messages (e.g `BecomeMonitor` method & reply)
-            None => (),
+        // Ignore other messages (e.g `BecomeMonitor` method & reply)
+        if let Some(signal) = NameOwnerChanged::from_message(msg) {
+            break signal;
         }
     };
     let args = signal.args()?;
@@ -95,20 +94,21 @@ async fn become_monitor_client(address: &str, tx: Sender<()>) -> anyhow::Result<
     let mut request_name_serial = None;
     while num_received < 8 {
         let msg = msg_stream.try_next().await?.unwrap();
-        let member = msg.member();
+        let header = msg.header();
+        let member = header.member();
 
         match msg.message_type() {
             MessageType::MethodCall => match member.unwrap().as_str() {
                 "Hello" => {
-                    hello_serial = msg.primary_header().serial_num().cloned();
+                    hello_serial = Some(msg.primary_header().serial_num());
                 }
                 "RequestName" => {
-                    request_name_serial = msg.primary_header().serial_num().cloned();
+                    request_name_serial = Some(msg.primary_header().serial_num());
                 }
                 method => panic!("unexpected method call: {}", method),
             },
             MessageType::MethodReturn => {
-                let serial = msg.reply_serial();
+                let serial = header.reply_serial();
                 if serial == hello_serial {
                     hello_serial = None;
                 } else if serial == request_name_serial {

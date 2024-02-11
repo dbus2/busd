@@ -1,9 +1,11 @@
+#[cfg(unix)]
 use std::env::temp_dir;
 
 use anyhow::ensure;
 use busd::bus::Bus;
 use futures_util::stream::StreamExt;
 use ntest::timeout;
+#[cfg(unix)]
 use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
@@ -32,7 +34,7 @@ async fn name_ownership_changes() {
     }
 
     // TCP socket
-    let address = format!("tcp:host=127.0.0.1,port=4242");
+    let address = "tcp:host=127.0.0.1,port=4242".to_string();
     name_ownership_changes_(&address, AuthMechanism::Cookie).await;
     name_ownership_changes_(&address, AuthMechanism::Anonymous).await;
 }
@@ -101,7 +103,7 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         "expected new owner to be us"
     );
     ensure!(
-        changed.header()?.destination()?.is_none(),
+        changed.message().header().destination().is_none(),
         "expected no destination for our signal",
     );
     let acquired = name_acquired_stream.next().await.unwrap();
@@ -110,7 +112,8 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         "expected name acquired signal for our name"
     );
     ensure!(
-        *acquired.header()?.destination()?.unwrap() == BusName::from(conn.unique_name().unwrap()),
+        *acquired.message().header().destination().unwrap()
+            == BusName::from(conn.unique_name().unwrap()),
         "expected name acquired signal to be unicasted to the acquiring connection",
     );
 
@@ -185,7 +188,7 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         "expected new owner to be our second connection"
     );
     ensure!(
-        changed.header()?.destination()?.is_none(),
+        changed.message().header().destination().is_none(),
         "expected no destination for our signal",
     );
     let lost = name_lost_stream.next().await.unwrap();
@@ -194,7 +197,8 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         "expected name lost signal for our name"
     );
     ensure!(
-        *lost.header()?.destination()?.unwrap() == BusName::from(conn.unique_name().unwrap()),
+        *lost.message().header().destination().unwrap()
+            == BusName::from(conn.unique_name().unwrap()),
         "expected name lost signal to be unicasted to the loosing connection",
     );
     let acquired = name_acquired_stream.next().await.unwrap();
@@ -203,7 +207,8 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         "expected name acquired signal for our name"
     );
     ensure!(
-        *acquired.header()?.destination()?.unwrap() == BusName::from(conn2.unique_name().unwrap()),
+        *acquired.message().header().destination().unwrap()
+            == BusName::from(conn2.unique_name().unwrap()),
         "expected name acquired signal to be unicasted to the acquiring connection",
     );
 

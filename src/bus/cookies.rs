@@ -1,12 +1,13 @@
 use anyhow::{anyhow, Error, Result};
 use rand::Rng;
-#[cfg(unix)]
-use std::{fs::Permissions, os::unix::prelude::PermissionsExt};
 use std::{
+    fmt::{self, Display, Formatter},
     io,
     str::FromStr,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+#[cfg(unix)]
+use std::{fs::Permissions, os::unix::prelude::PermissionsExt};
 #[cfg(unix)]
 use tokio::fs::set_permissions;
 use tokio::{
@@ -219,9 +220,9 @@ impl FromStr for Cookie {
     }
 }
 
-impl ToString for Cookie {
-    fn to_string(&self) -> String {
-        format!("{} {} {}", self.id, self.created, self.cookie)
+impl Display for Cookie {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} {}", self.id, self.created, self.cookie)
     }
 }
 

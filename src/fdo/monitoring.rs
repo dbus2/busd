@@ -3,8 +3,8 @@ use std::sync::{Arc, Weak};
 use tokio::spawn;
 use tracing::{debug, warn};
 use zbus::{
-    dbus_interface,
     fdo::{Error, Result},
+    interface,
     zvariant::Optional,
     MessageHeader, ResponseDispatchNotifier, SignalContext,
 };
@@ -28,7 +28,7 @@ impl Monitoring {
     }
 }
 
-#[dbus_interface(interface = "org.freedesktop.DBus.Monitoring")]
+#[interface(interface = "org.freedesktop.DBus.Monitoring")]
 impl Monitoring {
     async fn become_monitor(
         &self,

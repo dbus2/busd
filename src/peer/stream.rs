@@ -1,14 +1,9 @@
-#[cfg(unix)]
-use std::os::fd::AsRawFd;
-use std::{pin::Pin, sync::Arc};
+use std::pin::Pin;
 
 use anyhow::{bail, Error, Result};
 use futures_util::{Stream as FutureStream, TryStream, TryStreamExt};
 use tracing::trace;
-use zbus::{
-    zvariant::Type, Message, MessageBuilder, MessageField, MessageFieldCode, MessageStream,
-    MessageType,
-};
+use zbus::{zvariant::Type, Message, MessageBuilder, MessageStream, MessageType};
 
 use crate::peer::Peer;
 
@@ -22,8 +17,7 @@ pub struct Stream {
     stream: Pin<Box<StreamInner>>,
 }
 
-type StreamInner =
-    dyn TryStream<Ok = Arc<Message>, Error = Error, Item = Result<Arc<Message>>> + Send;
+type StreamInner = dyn TryStream<Ok = Message, Error = Error, Item = Result<Message>> + Send;
 
 impl Stream {
     pub fn for_peer(peer: &Peer) -> Self {
@@ -33,37 +27,31 @@ impl Stream {
             .and_then(move |msg| {
                 let unique_name = unique_name.clone();
                 async move {
-                    let fields = match msg.message_type() {
-                        MessageType::MethodCall
-                        | MessageType::MethodReturn
-                        | MessageType::Error
-                        | MessageType::Signal => msg.fields()?,
-                        MessageType::Invalid => bail!("Invalid message"),
-                    };
+                    let header = msg.header();
 
                     // Ensure destination field is present and readable for non-signals.
-                    if msg.message_type() != MessageType::Signal {
-                        match fields.get_field(MessageFieldCode::Destination) {
-                            Some(MessageField::Destination(_)) => (),
-                            Some(_) => {
-                                bail!("failed to parse message: Invalid destination field");
-                            }
-                            None => bail!("missing destination field"),
-                        }
+                    if msg.message_type() != MessageType::Signal && header.destination().is_none() {
+                        bail!("missing destination field");
                     }
 
                     // Ensure sender field is present. If it is not we add it using the unique name
                     // of the peer.
-                    match fields.get_field(MessageFieldCode::Sender) {
-                        Some(MessageField::Sender(sender)) if *sender == unique_name => Ok(msg),
+                    match header.sender() {
+                        Some(sender) if *sender == unique_name => Ok(msg),
                         Some(_) => bail!("failed to parse message: Invalid sender field"),
                         None => {
-                            let header = msg.header()?;
-                            let signature = match header.signature()? {
+                            let signature = match header.signature() {
                                 Some(sig) => sig.clone(),
                                 None => <()>::signature(),
                             };
-                            let body_bytes = msg.body_as_bytes()?;
+                            let body = msg.body();
+                            let body_bytes = body.data();
+                            #[cfg(unix)]
+                            let fds = body_bytes
+                                .fds()
+                                .iter()
+                                .map(|fd| fd.try_clone().map(Into::into))
+                                .collect::<zbus::zvariant::Result<Vec<_>>>()?;
                             let builder =
                                 MessageBuilder::from(header.clone()).sender(&unique_name)?;
                             let new_msg = unsafe {
@@ -71,12 +59,12 @@ impl Stream {
                                     body_bytes,
                                     signature,
                                     #[cfg(unix)]
-                                    msg.take_fds().iter().map(|fd| fd.as_raw_fd()).collect(),
+                                    fds,
                                 )?
                             };
                             trace!("Added sender field to message: {:?}", new_msg);
 
-                            Ok(Arc::new(new_msg))
+                            Ok(new_msg)
                         }
                     }
                 }
@@ -89,12 +77,12 @@ impl Stream {
 }
 
 impl FutureStream for Stream {
-    type Item = Result<Arc<Message>>;
+    type Item = Result<Message>;
 
     fn poll_next(
         self: Pin<&mut Self>,
         cx: &mut std::task::Context,
-    ) -> std::task::Poll<Option<Result<Arc<Message>>>> {
+    ) -> std::task::Poll<Option<Result<Message>>> {
         FutureStream::poll_next(Pin::new(&mut self.get_mut().stream), cx)
     }
 }

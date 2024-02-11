@@ -12,6 +12,7 @@ jobs:
     env:
       RUST_LOG: "trace"
       RUST_BACKTRACE: "full"
+      RUSTFLAGS: -D warnings
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -64,4 +65,4 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Check common mistakes
-        run: cargo clippy --all -- -D warnings
+        run: cargo clippy --tests --all -- -D warnings

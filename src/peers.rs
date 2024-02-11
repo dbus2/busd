@@ -3,7 +3,6 @@ use event_listener::EventListener;
 use futures_util::{
     future::{select, Either},
     stream::StreamExt,
-    SinkExt,
 };
 use std::{
     collections::BTreeMap,
@@ -13,9 +12,10 @@ use std::{
 use tokio::{spawn, sync::RwLock};
 use tracing::{debug, trace, warn};
 use zbus::{
+    connection::socket::BoxedSplit,
     names::{BusName, OwnedUniqueName, UniqueName},
     zvariant::Optional,
-    AuthMechanism, Guid, MessageBuilder, MessageField, MessageFieldCode, MessageType, Socket,
+    AuthMechanism, Message, MessageType, OwnedGuid,
 };
 
 use crate::{
@@ -45,9 +45,9 @@ impl Peers {
 
     pub async fn add(
         self: &Arc<Self>,
-        guid: &Arc<Guid>,
+        guid: &OwnedGuid,
         id: Option<usize>,
-        socket: Box<dyn Socket + 'static>,
+        socket: BoxedSplit,
         auth_mechanism: AuthMechanism,
     ) -> Result<()> {
         let mut peers = self.peers_mut().await;
@@ -128,7 +128,7 @@ impl Peers {
         let new_owner = name_owner_changed.new_owner.map(UniqueName::from);
 
         // First broadcast the name change signal.
-        let msg = MessageBuilder::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameOwnerChanged")
+        let msg = Message::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameOwnerChanged")
             .unwrap()
             .sender(fdo::BUS_NAME)
             .unwrap()
@@ -137,36 +137,30 @@ impl Peers {
                 Optional::from(old_owner.clone()),
                 Optional::from(new_owner.clone()),
             ))?;
-        self.broadcast_msg(Arc::new(msg)).await;
+        self.broadcast_msg(msg).await;
 
         // Now unicast the appropriate signal to the old and new owners.
         if let Some(old_owner) = old_owner {
-            let msg = MessageBuilder::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameLost")
+            let msg = Message::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameLost")
                 .unwrap()
                 .sender(fdo::BUS_NAME)
                 .unwrap()
                 .destination(old_owner.clone())
                 .unwrap()
                 .build(&name)?;
-            if let Err(e) = self
-                .send_msg_to_unique_name(Arc::new(msg), old_owner.clone())
-                .await
-            {
+            if let Err(e) = self.send_msg_to_unique_name(msg, old_owner.clone()).await {
                 warn!("Couldn't notify inexistant peer {old_owner} about loosing name {name}: {e}")
             }
         }
         if let Some(new_owner) = new_owner {
-            let msg = MessageBuilder::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameAcquired")
+            let msg = Message::signal(fdo::DBus::PATH, fdo::DBus::INTERFACE, "NameAcquired")
                 .unwrap()
                 .sender(fdo::BUS_NAME)
                 .unwrap()
                 .destination(new_owner.clone())
                 .unwrap()
                 .build(&name)?;
-            if let Err(e) = self
-                .send_msg_to_unique_name(Arc::new(msg), new_owner.clone())
-                .await
-            {
+            if let Err(e) = self.send_msg_to_unique_name(msg, new_owner.clone()).await {
                 warn!("Couldn't notify peer {new_owner} about acquiring name {name}: {e}")
             }
         }
@@ -203,8 +197,8 @@ impl Peers {
 
             match msg.message_type() {
                 MessageType::Signal => self.broadcast_msg(msg).await,
-                _ => match msg.fields()?.get_field(MessageFieldCode::Destination) {
-                    Some(MessageField::Destination(dest)) => {
+                _ => match msg.header().destination() {
+                    Some(dest) => {
                         if let Err(e) = self.send_msg(msg.clone(), dest.clone()).await {
                             warn!("{}", e);
                         }
@@ -239,7 +233,7 @@ impl Peers {
         Ok(())
     }
 
-    async fn send_msg(&self, msg: Arc<zbus::Message>, destination: BusName<'_>) -> Result<()> {
+    async fn send_msg(&self, msg: Message, destination: BusName<'_>) -> Result<()> {
         trace!(
             "Forwarding message: {:?}, destination: {}",
             msg,
@@ -259,7 +253,7 @@ impl Peers {
 
     async fn send_msg_to_unique_name(
         &self,
-        msg: Arc<zbus::Message>,
+        msg: Message,
         destination: UniqueName<'_>,
     ) -> Result<()> {
         let conn = self
@@ -269,10 +263,7 @@ impl Peers {
             .get(destination.as_str())
             .map(|peer| peer.conn().clone());
         match conn {
-            Some(mut conn) => conn
-                .send(msg.clone())
-                .await
-                .context("failed to send message")?,
+            Some(conn) => conn.send(&msg).await.context("failed to send message")?,
             None => debug!("no peer for destination `{destination}`"),
         }
         let name_registry = self.name_registry().await;
@@ -281,7 +272,7 @@ impl Peers {
         Ok(())
     }
 
-    async fn broadcast_msg(&self, msg: Arc<zbus::Message>) {
+    async fn broadcast_msg(&self, msg: Message) {
         trace!("Broadcasting message: {:?}", msg);
         let name_registry = self.name_registry().await;
         for peer in self.peers.read().await.values() {
@@ -292,7 +283,7 @@ impl Peers {
 
             if let Err(e) = peer
                 .conn()
-                .send(msg.clone())
+                .send(&msg)
                 .await
                 .context("failed to send message")
             {
@@ -303,7 +294,7 @@ impl Peers {
         self.broadcast_to_monitors(msg, &name_registry).await;
     }
 
-    async fn broadcast_to_monitors(&self, msg: Arc<zbus::Message>, name_registry: &NameRegistry) {
+    async fn broadcast_to_monitors(&self, msg: Message, name_registry: &NameRegistry) {
         let monitors = self.monitors.read().await;
         if monitors.is_empty() {
             return;
@@ -324,7 +315,7 @@ impl Peers {
 
             if let Err(e) = monitor
                 .conn()
-                .send(msg.clone())
+                .send(&msg)
                 .await
                 .context("failed to send message")
             {

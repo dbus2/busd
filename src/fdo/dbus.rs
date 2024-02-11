@@ -7,13 +7,13 @@ use enumflags2::BitFlags;
 use tokio::spawn;
 use tracing::warn;
 use zbus::{
-    dbus_interface,
     fdo::{
         ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
     },
+    interface,
     names::{BusName, InterfaceName, OwnedBusName, OwnedUniqueName, UniqueName, WellKnownName},
     zvariant::Optional,
-    Guid, MessageHeader, OwnedMatchRule, ResponseDispatchNotifier, SignalContext,
+    MessageHeader, OwnedGuid, OwnedMatchRule, ResponseDispatchNotifier, SignalContext,
 };
 
 use super::msg_sender;
@@ -22,14 +22,14 @@ use crate::{peer::Peer, peers::Peers};
 #[derive(Debug)]
 pub struct DBus {
     peers: Weak<Peers>,
-    guid: Arc<Guid>,
+    guid: OwnedGuid,
 }
 
 impl DBus {
     pub const PATH: &'static str = "/org/freedesktop/DBus";
     pub const INTERFACE: &'static str = "org.freedesktop.DBus";
 
-    pub fn new(peers: Arc<Peers>, guid: Arc<Guid>) -> Self {
+    pub fn new(peers: Arc<Peers>, guid: OwnedGuid) -> Self {
         Self {
             peers: Arc::downgrade(&peers),
             guid,
@@ -59,7 +59,7 @@ impl DBus {
     }
 }
 
-#[dbus_interface(interface = "org.freedesktop.DBus")]
+#[interface(interface = "org.freedesktop.DBus")]
 impl DBus {
     /// This is already called & handled and we only need to handle it once.
     async fn hello(
@@ -224,7 +224,7 @@ impl DBus {
     }
 
     /// Returns the security context used by SELinux, in an unspecified format.
-    #[dbus_interface(name = "GetConnectionSELinuxSecurityContext")]
+    #[zbus(name = "GetConnectionSELinuxSecurityContext")]
     async fn get_connection_selinux_security_context(
         &self,
         bus_name: BusName<'_>,
@@ -239,7 +239,7 @@ impl DBus {
     }
 
     /// Returns the Unix process ID of the process connected to the server.
-    #[dbus_interface(name = "GetConnectionUnixProcessID")]
+    #[zbus(name = "GetConnectionUnixProcessID")]
     async fn get_connection_unix_process_id(&self, bus_name: BusName<'_>) -> Result<u32> {
         self.get_connection_credentials(bus_name.clone())
             .await
@@ -264,7 +264,7 @@ impl DBus {
     }
 
     /// Gets the unique ID of the bus.
-    fn get_id(&self) -> &Guid {
+    fn get_id(&self) -> &OwnedGuid {
         &self.guid
     }
 
@@ -356,7 +356,7 @@ impl DBus {
 
     /// This property lists abstract “features” provided by the message bus, and can be used by
     /// clients to detect the capabilities of the message bus with which they are communicating.
-    #[dbus_interface(property)]
+    #[zbus(property)]
     fn features(&self) -> &[&str] {
         &[]
     }
@@ -373,7 +373,7 @@ impl DBus {
     /// `org.freedesktop.DBus` was successful. The standard `org.freedesktop.DBus.Peer` and
     /// `org.freedesktop.DBus.Introspectable` interfaces are not included in the value of this
     /// property either, because they do not indicate features of the message bus implementation.
-    #[dbus_interface(property)]
+    #[zbus(property)]
     fn interfaces(&self) -> &[InterfaceName<'_>] {
         // TODO: List `org.freedesktop.DBus.Monitoring` when we support it.
         &[]
@@ -382,7 +382,7 @@ impl DBus {
     /// This signal indicates that the owner of a name has changed.
     ///
     /// It's also the signal to use to detect the appearance of new names on the bus.
-    #[dbus_interface(signal)]
+    #[zbus(signal)]
     pub async fn name_owner_changed(
         signal_ctxt: &SignalContext<'_>,
         name: BusName<'_>,
@@ -391,11 +391,11 @@ impl DBus {
     ) -> zbus::Result<()>;
 
     /// This signal is sent to a specific application when it loses ownership of a name.
-    #[dbus_interface(signal)]
+    #[zbus(signal)]
     pub async fn name_lost(signal_ctxt: &SignalContext<'_>, name: BusName<'_>) -> zbus::Result<()>;
 
     /// This signal is sent to a specific application when it gains ownership of a name.
-    #[dbus_interface(signal)]
+    #[zbus(signal)]
     pub async fn name_acquired(
         signal_ctxt: &SignalContext<'_>,
         name: BusName<'_>,
