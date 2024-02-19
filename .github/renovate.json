@@ -12,9 +12,7 @@
     },
     {
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "automerge": true
-    },
-    {
+      "automerge": true,
       "rebaseWhen": "conflicted"
     }
   ]
