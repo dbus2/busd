@@ -9,6 +9,13 @@
       "commitMessagePrefix": "⬆️  ",
       "commitMessageTopic": "{{depName}}",
       "lockFileMaintenance": { "enabled": true }
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "rebaseWhen": "conflicted"
     }
   ]
 }
