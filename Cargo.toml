@@ -53,3 +53,6 @@ nix = "0.27.1"
 
 [features]
 default = ["tracing-subscriber"]
+
+[profile.release]
+lto = "fat"
