@@ -49,7 +49,7 @@ rand = "0.8.5"
 event-listener = "5"
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.27.1"
+nix = { version = "0.28.0", features = ["user"] }
 
 [features]
 default = ["tracing-subscriber"]
