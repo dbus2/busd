@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
     }
 
     if args.print_address {
-        println!("{},guid={}", bus.address(), bus.guid());
+        println!("{}", bus.address());
     }
 
     // FIXME: How to handle this gracefully on Windows?
