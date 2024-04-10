@@ -36,7 +36,7 @@ tracing-subscriber = { version = "0.3.18", features = [
     "fmt",
     "ansi",
 ], default-features = false, optional = true }
-anyhow = "1.0.81"
+anyhow = "1.0.82"
 # Explicitly depend on serde to enable `rc` feature.
 serde = { version = "1.0.197", features = ["rc"] }
 futures-util = "0.3.30"
