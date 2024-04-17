@@ -26,14 +26,11 @@ pub struct Peer {
 impl Peer {
     pub async fn new(
         guid: OwnedGuid,
-        id: Option<usize>,
+        id: usize,
         socket: BoxedSplit,
         auth_mechanism: AuthMechanism,
     ) -> Result<Self> {
-        let unique_name = match id {
-            Some(id) => OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap(),
-            None => OwnedUniqueName::try_from(fdo::BUS_NAME).unwrap(),
-        };
+        let unique_name = OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap();
         let conn = ConnectionBuilder::socket(socket)
             .server(guid)?
             .p2p()
@@ -49,6 +46,19 @@ impl Peer {
             greeted: false,
             canceled_event: Event::new(),
         })
+    }
+
+    // This the the bus itself, serving the FDO D-Bus API.
+    pub async fn new_us(conn: Connection) -> Self {
+        let unique_name = OwnedUniqueName::try_from(fdo::BUS_NAME).unwrap();
+
+        Self {
+            conn,
+            unique_name,
+            match_rules: MatchRules::default(),
+            greeted: true,
+            canceled_event: Event::new(),
+        }
     }
 
     pub fn unique_name(&self) -> &OwnedUniqueName {

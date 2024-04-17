@@ -3,11 +3,11 @@ mod cookies;
 use anyhow::{bail, Error, Ok, Result};
 use futures_util::{
     future::{select, Either},
-    pin_mut, try_join, TryFutureExt,
+    pin_mut,
 };
-use std::{cell::OnceCell, str::FromStr, sync::Arc};
 #[cfg(unix)]
 use std::{env, path::Path};
+use std::{str::FromStr, sync::Arc};
 #[cfg(unix)]
 use tokio::fs::remove_file;
 use tokio::{spawn, task::JoinHandle};
@@ -39,9 +39,9 @@ pub struct Inner {
     address: Address,
     peers: Arc<Peers>,
     guid: OwnedGuid,
-    next_id: Option<usize>,
+    next_id: usize,
     auth_mechanism: AuthMechanism,
-    self_conn: OnceCell<Connection>,
+    _self_conn: Connection,
 }
 
 #[derive(Debug)]
@@ -75,27 +75,51 @@ impl Bus {
             _ => bail!("Unsupported address `{}`.", address),
         }?;
 
-        let mut bus = Self::new(address.clone(), guid.clone(), listener, auth_mechanism).await?;
+        let peers = Peers::new();
+
+        let dbus = DBus::new(peers.clone(), guid.clone());
+        let monitoring = Monitoring::new(peers.clone());
 
         // Create a peer for ourselves.
         trace!("Creating self-dial connection.");
-        let dbus = DBus::new(bus.peers().clone(), guid.clone());
-        let monitoring = Monitoring::new(bus.peers().clone());
-        let conn_builder_fut = ConnectionBuilder::address(address)?
-            .auth_mechanisms(&[auth_mechanism])
+        let (client_socket, peer_socket) = zbus::connection::socket::Channel::pair();
+        let service_conn = ConnectionBuilder::authenticated_socket(client_socket, guid.clone())?
             .p2p()
             .unique_name(fdo::BUS_NAME)?
             .name(fdo::BUS_NAME)?
             .serve_at(fdo::DBus::PATH, dbus)?
             .serve_at(fdo::Monitoring::PATH, monitoring)?
             .build()
-            .map_err(Into::into);
+            .await?;
+        let peer_conn = ConnectionBuilder::authenticated_socket(peer_socket, guid.clone())?
+            .p2p()
+            .build()
+            .await?;
 
-        let (conn, ()) = try_join!(conn_builder_fut, bus.accept_next())?;
-        bus.inner.self_conn.set(conn).unwrap();
+        peers.add_us(peer_conn).await;
         trace!("Self-dial connection created.");
 
-        Ok(bus)
+        let cookie_task = if auth_mechanism == AuthMechanism::Cookie {
+            let (cookie_task, cookie_sync_rx) = cookies::run_sync();
+            cookie_sync_rx.await?;
+
+            Some(cookie_task)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            listener,
+            cookie_task,
+            inner: Inner {
+                address,
+                peers,
+                guid,
+                next_id: 0,
+                auth_mechanism,
+                _self_conn: service_conn,
+            },
+        })
     }
 
     pub fn address(&self) -> &Address {
@@ -118,34 +142,6 @@ impl Bus {
             },
             _ => Ok(()),
         }
-    }
-
-    async fn new(
-        address: Address,
-        guid: OwnedGuid,
-        listener: Listener,
-        auth_mechanism: AuthMechanism,
-    ) -> Result<Self> {
-        let cookie_task = if auth_mechanism == AuthMechanism::Cookie {
-            let (cookie_task, cookie_sync_rx) = cookies::run_sync();
-            cookie_sync_rx.await?;
-
-            Some(cookie_task)
-        } else {
-            None
-        };
-        Ok(Self {
-            listener,
-            cookie_task,
-            inner: Inner {
-                address,
-                peers: Peers::new(),
-                guid,
-                next_id: None,
-                auth_mechanism,
-                self_conn: OnceCell::new(),
-            },
-        })
     }
 
     #[cfg(unix)]
@@ -260,19 +256,10 @@ impl Bus {
         self.inner.auth_mechanism
     }
 
-    fn next_id(&mut self) -> Option<usize> {
-        match self.inner.next_id {
-            None => {
-                self.inner.next_id = Some(0);
+    fn next_id(&mut self) -> usize {
+        self.inner.next_id += 1;
 
-                None
-            }
-            Some(id) => {
-                self.inner.next_id = Some(id + 1);
-
-                Some(id)
-            }
-        }
+        self.inner.next_id
     }
 }
 
