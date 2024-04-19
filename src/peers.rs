@@ -46,7 +46,7 @@ impl Peers {
     pub async fn add(
         self: &Arc<Self>,
         guid: &OwnedGuid,
-        id: Option<usize>,
+        id: usize,
         socket: BoxedSplit,
         auth_mechanism: AuthMechanism,
     ) -> Result<()> {
@@ -70,6 +70,27 @@ impl Peers {
         }
 
         Ok(())
+    }
+
+    pub async fn add_us(self: &Arc<Self>, conn: zbus::Connection) {
+        let mut peers = self.peers_mut().await;
+        let peer = Peer::new_us(conn).await;
+        let unique_name = peer.unique_name().clone();
+        match peers.get(&unique_name) {
+            Some(peer) => panic!(
+                "Unique name `{}` re-used. We're in deep trouble if this happens",
+                peer.unique_name()
+            ),
+            None => {
+                let peer_stream = peer.stream();
+                let listener = peer.listen_cancellation();
+                tokio::spawn(
+                    self.clone()
+                        .serve_peer(peer_stream, listener, unique_name.clone()),
+                );
+                peers.insert(unique_name.clone(), peer);
+            }
+        }
     }
 
     pub async fn peers(&self) -> impl Deref<Target = BTreeMap<OwnedUniqueName, Peer>> + '_ {

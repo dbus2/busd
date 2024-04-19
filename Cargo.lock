@@ -86,7 +86,7 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "258b52a1aa741b9f09783b2d86cf0aeeb617bbf847f6933340a39644227acbdb"
 dependencies = [
- "event-listener 5.2.0",
+ "event-listener 5.3.0",
  "event-listener-strategy 0.5.0",
  "futures-core",
  "pin-project-lite",
@@ -99,7 +99,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f28243a43d821d11341ab73c80bed182dc015c514b951616cf79bd4af39af0c3"
 dependencies = [
  "concurrent-queue",
- "event-listener 5.2.0",
+ "event-listener 5.3.0",
  "event-listener-strategy 0.5.0",
  "futures-core",
  "pin-project-lite",
@@ -146,9 +146,9 @@ dependencies = [
 
 [[package]]
 name = "async-process"
-version = "2.2.0"
+version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d999d925640d51b662b7b4e404224dd81de70f4aa4a199383c2c5e5b86885fa3"
+checksum = "cad07b3443bfa10dcddf86a452ec48949e8e7fedf7392d82de3969fda99e90ed"
 dependencies = [
  "async-channel",
  "async-io",
@@ -157,7 +157,7 @@ dependencies = [
  "async-task",
  "blocking",
  "cfg-if",
- "event-listener 5.2.0",
+ "event-listener 5.3.0",
  "futures-lite",
  "rustix",
  "tracing",
@@ -223,9 +223,9 @@ checksum = "fbb36e985947064623dbd357f727af08ffd077f93d696782f3c56365fa2e2799"
 
 [[package]]
 name = "async-trait"
-version = "0.1.79"
+version = "0.1.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a507401cad91ec6a857ed5513a2073c82a9b9048762b885bb98655b306964681"
+checksum = "c6fa2087f2753a7da8cc1c0dbfcf89579dd57458e36769de5ac750b4671737ca"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -355,7 +355,7 @@ dependencies = [
  "clap",
  "console-subscriber",
  "enumflags2",
- "event-listener 5.2.0",
+ "event-listener 5.3.0",
  "futures-util",
  "hex",
  "nix",
@@ -538,17 +538,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "derivative"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -626,9 +615,9 @@ dependencies = [
 
 [[package]]
 name = "event-listener"
-version = "5.2.0"
+version = "5.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b5fb89194fa3cad959b833185b3063ba881dbfc7030680b314250779fb4cc91"
+checksum = "6d9944b8ca13534cdfb2800775f8dd4902ff3fc75a50101466decadfdf322a24"
 dependencies = [
  "concurrent-queue",
  "parking",
@@ -651,7 +640,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "feedafcaa9b749175d5ac357452a9d41ea2911da598fde46ce1fe02c37751291"
 dependencies = [
- "event-listener 5.2.0",
+ "event-listener 5.3.0",
  "pin-project-lite",
 ]
 
@@ -1272,9 +1261,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.35"
+version = "1.0.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "291ec9ab5efd934aaf503a6466c5d5251535d108ee747472c3977cc5acc868ef"
+checksum = "0fa76aaf39101c457836aec0ce2316dbdc3ab723cdda1c6bd4e6ad4208acaca7"
 dependencies = [
  "proc-macro2",
 ]
@@ -1417,9 +1406,9 @@ dependencies = [
 
 [[package]]
 name = "serde_repr"
-version = "0.1.18"
+version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b2e6b945e9d3df726b65d6ee24060aff8e3533d431f677a9695db04eff9dfdb"
+checksum = "6c64451ba24fc7a6a2d60fc75dd9c83c90903b19028d4eff35e88fc1e86564e9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1963,15 +1952,14 @@ dependencies = [
 [[package]]
 name = "zbus"
 version = "4.1.2"
-source = "git+https://github.com/dbus2/zbus/#ba7c275a88953d8a94b9ab583badbcdd03779b6a"
+source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
 dependencies = [
  "async-broadcast",
  "async-process",
  "async-recursion",
  "async-trait",
- "derivative",
  "enumflags2",
- "event-listener 5.2.0",
+ "event-listener 5.3.0",
  "futures-core",
  "futures-sink",
  "futures-util",
@@ -1996,12 +1984,11 @@ dependencies = [
 [[package]]
 name = "zbus_macros"
 version = "4.1.2"
-source = "git+https://github.com/dbus2/zbus/#ba7c275a88953d8a94b9ab583badbcdd03779b6a"
+source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "regex",
  "syn 1.0.109",
  "zvariant_utils",
 ]
@@ -2009,7 +1996,7 @@ dependencies = [
 [[package]]
 name = "zbus_names"
 version = "3.0.0"
-source = "git+https://github.com/dbus2/zbus/#ba7c275a88953d8a94b9ab583badbcdd03779b6a"
+source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
 dependencies = [
  "serde",
  "static_assertions",
@@ -2019,7 +2006,7 @@ dependencies = [
 [[package]]
 name = "zvariant"
 version = "4.0.2"
-source = "git+https://github.com/dbus2/zbus/#ba7c275a88953d8a94b9ab583badbcdd03779b6a"
+source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
 dependencies = [
  "endi",
  "enumflags2",
@@ -2031,7 +2018,7 @@ dependencies = [
 [[package]]
 name = "zvariant_derive"
 version = "4.0.2"
-source = "git+https://github.com/dbus2/zbus/#ba7c275a88953d8a94b9ab583badbcdd03779b6a"
+source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2043,7 +2030,7 @@ dependencies = [
 [[package]]
 name = "zvariant_utils"
 version = "1.1.0"
-source = "git+https://github.com/dbus2/zbus/#ba7c275a88953d8a94b9ab583badbcdd03779b6a"
+source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
 dependencies = [
  "proc-macro2",
  "quote",
