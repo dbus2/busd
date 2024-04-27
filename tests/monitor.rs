@@ -67,8 +67,12 @@ async fn become_monitor_client(address: &str, tx: Sender<()>) -> anyhow::Result<
         *args.name() == unique_name,
         "expected NameOwnerChanged signal for monitor's unique_name"
     );
-    let msg = msg_stream.try_next().await?.unwrap();
-    let signal = NameLost::from_message(msg).unwrap();
+    let signal = loop {
+        let msg = msg_stream.try_next().await?.unwrap();
+        if let Some(signal) = NameLost::from_message(msg) {
+            break signal;
+        }
+    };
     let args = signal.args()?;
     ensure!(
         *args.name() == unique_name,
