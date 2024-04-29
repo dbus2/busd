@@ -1,3 +1,8 @@
+<img alt="Project logo: a bus" src="data/logo.svg" width="200">
+
+[![Build Status](https://img.shields.io/github/actions/workflow/status/dbus2/busd/ci.yml?branch=main)](https://github.com/dbus2/busd/actions?query=branch%3Amain)
+[![crates.io](https://img.shields.io/crates/v/busd.svg)](https://crates.io/crates/busd)
+
 # busd
 
 A D-Bus bus (broker) implementation in Rust. Since it's pure Rust, it's much easier to build for
