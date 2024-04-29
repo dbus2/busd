@@ -146,9 +146,9 @@ dependencies = [
 
 [[package]]
 name = "async-process"
-version = "2.2.1"
+version = "2.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cad07b3443bfa10dcddf86a452ec48949e8e7fedf7392d82de3969fda99e90ed"
+checksum = "a53fc6301894e04a92cb2584fedde80cb25ba8e02d9dc39d4a87d036e22f397d"
 dependencies = [
  "async-channel",
  "async-io",
@@ -166,9 +166,9 @@ dependencies = [
 
 [[package]]
 name = "async-recursion"
-version = "1.1.0"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30c5ef0ede93efbf733c1a727f3b6b5a1060bbedd5600183e66f6e4be4af0ec5"
+checksum = "3b43422f69d8ff38f95f1b2bb76517c91589a924d1559a0e935d7c8ce0274c11"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1952,7 +1952,7 @@ dependencies = [
 [[package]]
 name = "zbus"
 version = "4.1.2"
-source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
+source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
 dependencies = [
  "async-broadcast",
  "async-process",
@@ -1984,7 +1984,7 @@ dependencies = [
 [[package]]
 name = "zbus_macros"
 version = "4.1.2"
-source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
+source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1996,7 +1996,7 @@ dependencies = [
 [[package]]
 name = "zbus_names"
 version = "3.0.0"
-source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
+source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
 dependencies = [
  "serde",
  "static_assertions",
@@ -2006,7 +2006,7 @@ dependencies = [
 [[package]]
 name = "zvariant"
 version = "4.0.2"
-source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
+source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
 dependencies = [
  "endi",
  "enumflags2",
@@ -2018,7 +2018,7 @@ dependencies = [
 [[package]]
 name = "zvariant_derive"
 version = "4.0.2"
-source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
+source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2030,7 +2030,7 @@ dependencies = [
 [[package]]
 name = "zvariant_utils"
 version = "1.1.0"
-source = "git+https://github.com/dbus2/zbus/#5a304f28f26a77ee8e43892d3086f4337c38b116"
+source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
 dependencies = [
  "proc-macro2",
  "quote",

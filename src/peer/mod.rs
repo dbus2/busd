@@ -34,7 +34,7 @@ impl Peer {
         let conn = ConnectionBuilder::socket(socket)
             .server(guid)?
             .p2p()
-            .auth_mechanisms(&[auth_mechanism])
+            .auth_mechanism(auth_mechanism)
             .build()
             .await?;
         trace!("created: {:?}", conn);
