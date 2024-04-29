@@ -41,4 +41,3 @@ busctl call --user com.intel.dleyna-renderer /com/intel/dLeynaRenderer com.intel
 ## License
 
 MIT license [LICENSE-MIT](LICENSE-MIT)
-
