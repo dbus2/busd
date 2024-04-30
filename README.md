@@ -43,6 +43,21 @@ Since auto-starting of services is not yet implemented, you'll have to start ser
 busctl call --user com.intel.dleyna-renderer /com/intel/dLeynaRenderer com.intel.dLeynaRenderer.Manager GetRenderers
 ```
 
+## The plan
+
+### Full compatibility with the D-Bus specification
+
+Implement all features that manadated and recommended by the [specification].
+
+### Additional Header Fields
+
+While the D-Bus spec does not allow custom header fields in messages, `busd` will still support a
+few additional on-demand (only) fields, that are useful for certain applications. One example is
+addition of [peer credentials] on every message, which can avoid round-trips on the bus.
+
 ## License
 
-MIT license [LICENSE-MIT](LICENSE-MIT)
+[MIT](LICENSE-MIT)
+
+[specification]: https://dbus.freedesktop.org/doc/dbus-specification.html
+[peer credentials]: https://github.com/dbus2/busd/issues/29
