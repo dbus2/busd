@@ -1951,8 +1951,9 @@ dependencies = [
 
 [[package]]
 name = "zbus"
-version = "4.1.2"
-source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
+version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6aea58d1af0aaa8abf87f3d9ade9b8f46bf13727e5f9fb24bc31ee9d94a9b4ad"
 dependencies = [
  "async-broadcast",
  "async-process",
@@ -1983,8 +1984,9 @@ dependencies = [
 
 [[package]]
 name = "zbus_macros"
-version = "4.1.2"
-source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
+version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bf2b496ec1e2d3c4a7878e351607f7a2bec1e1029b353683dfc28a22999e369"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1996,7 +1998,8 @@ dependencies = [
 [[package]]
 name = "zbus_names"
 version = "3.0.0"
-source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b9b1fef7d021261cc16cba64c351d291b715febe0fa10dc3a443ac5a5022e6c"
 dependencies = [
  "serde",
  "static_assertions",
@@ -2005,8 +2008,9 @@ dependencies = [
 
 [[package]]
 name = "zvariant"
-version = "4.0.2"
-source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e9282c6945d9e27742ba7ad7191325546636295de7b83f6735af73159b32ac7"
 dependencies = [
  "endi",
  "enumflags2",
@@ -2017,8 +2021,9 @@ dependencies = [
 
 [[package]]
 name = "zvariant_derive"
-version = "4.0.2"
-source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0142549e559746ff09d194dd43d256a554299d286cc56460a082b8ae24652aa1"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -2029,8 +2034,9 @@ dependencies = [
 
 [[package]]
 name = "zvariant_utils"
-version = "1.1.0"
-source = "git+https://github.com/dbus2/zbus/#a40b9257e72039d4716a37699b591edda13229c9"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75fa7291bdd68cd13c4f97cc9d78cbf16d96305856dfc7ac942aeff4c2de7d5a"
 dependencies = [
  "proc-macro2",
  "quote",
