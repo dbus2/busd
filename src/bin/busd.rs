@@ -77,8 +77,8 @@ async fn main() -> Result<()> {
 
     #[cfg(unix)]
     if let Some(fd) = args.ready_fd {
-        // SAFETY: accessing `ready_fd` in any other context aside from `main` is disallowed, so
-        // there is only one owner for this file descriptor.
+        // SAFETY: We don't have any way to know if the fd is valid or not. The parent process is
+        // responsible for passing a valid fd.
         let mut ready_file = unsafe { File::from_raw_fd(fd) };
         ready_file.write_all(b"READY=1\n")?;
     }
