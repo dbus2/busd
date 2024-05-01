@@ -1,6 +1,6 @@
 [package]
 name = "busd"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Zeeshan Ali Khan <zeeshanak@gnome.org>"]
 description = "A D-Bus bus (broker) implementation"
 edition = "2021"
@@ -20,11 +20,11 @@ name = "busd"
 path = "src/bin/busd.rs"
 
 [dependencies]
-zbus = { git = "https://github.com/dbus2/zbus/", features = [
+#zbus = { git = "https://github.com/dbus2/zbus/", features = [
+zbus = { version = "4.2.0", features = [
     "tokio",
     "bus-impl",
 ], default-features = false }
-#zbus = { version = "4", features = ["tokio", "bus-impl"], default-features = false }
 tokio = { version = "1.37.0", features = [
     "macros",
     "rt-multi-thread",
