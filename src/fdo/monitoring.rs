@@ -4,9 +4,9 @@ use tokio::spawn;
 use tracing::{debug, warn};
 use zbus::{
     fdo::{Error, Result},
-    interface,
+    interface, message,
+    object_server::{ResponseDispatchNotifier, SignalEmitter},
     zvariant::Optional,
-    MessageHeader, ResponseDispatchNotifier, SignalContext,
 };
 
 use super::msg_sender;
@@ -34,8 +34,8 @@ impl Monitoring {
         &self,
         match_rules: MatchRules,
         _flags: u32,
-        #[zbus(header)] hdr: MessageHeader<'_>,
-        #[zbus(signal_context)] ctxt: SignalContext<'_>,
+        #[zbus(header)] hdr: message::Header<'_>,
+        #[zbus(signal_emitter)] ctxt: SignalEmitter<'_>,
     ) -> Result<ResponseDispatchNotifier<()>> {
         let owner = msg_sender(&hdr).to_owned();
         let peers = self

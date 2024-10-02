@@ -13,9 +13,10 @@ use tokio::{spawn, sync::RwLock};
 use tracing::{debug, trace, warn};
 use zbus::{
     connection::socket::BoxedSplit,
+    message,
     names::{BusName, OwnedUniqueName, UniqueName},
     zvariant::Optional,
-    AuthMechanism, Message, MessageType, OwnedGuid,
+    AuthMechanism, Message, OwnedGuid,
 };
 
 use crate::{
@@ -217,7 +218,7 @@ impl Peers {
             };
 
             match msg.message_type() {
-                MessageType::Signal => self.broadcast_msg(msg).await,
+                message::Type::Signal => self.broadcast_msg(msg).await,
                 _ => match msg.header().destination() {
                     Some(dest) => {
                         if let Err(e) = self.send_msg(msg.clone(), dest.clone()).await {

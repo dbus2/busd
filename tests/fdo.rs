@@ -13,9 +13,11 @@ use rand::{
 use tokio::{select, sync::oneshot::Sender};
 use tracing::instrument;
 use zbus::{
+    connection,
     fdo::{self, DBusProxy, ReleaseNameReply, RequestNameFlags, RequestNameReply},
     names::{BusName, WellKnownName},
-    AuthMechanism, CacheProperties, ConnectionBuilder,
+    proxy::CacheProperties,
+    AuthMechanism,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -40,9 +42,7 @@ async fn name_ownership_changes() {
 }
 
 async fn name_ownership_changes_(address: &str, auth_mechanism: AuthMechanism) {
-    let mut bus = Bus::for_address(Some(address), auth_mechanism)
-        .await
-        .unwrap();
+    let mut bus = Bus::for_address(address, auth_mechanism).await.unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     let handle = tokio::spawn(async move {
@@ -65,7 +65,7 @@ async fn name_ownership_changes_(address: &str, auth_mechanism: AuthMechanism) {
 
 #[instrument]
 async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow::Result<()> {
-    let conn = ConnectionBuilder::address(address)?.build().await?;
+    let conn = connection::Builder::address(address)?.build().await?;
     let conn_unique_name = conn.unique_name().unwrap().to_owned();
     let dbus_proxy = DBusProxy::builder(&conn)
         .cache_properties(CacheProperties::No)
@@ -127,7 +127,7 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
     );
 
     // Now we try with another connection and we should be queued.
-    let conn2 = ConnectionBuilder::address(address)?.build().await?;
+    let conn2 = connection::Builder::address(address)?.build().await?;
     let conn2_unique_name = conn2.unique_name().unwrap().to_owned();
     let changed = name_changed_stream.next().await.unwrap();
     ensure!(

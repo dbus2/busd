@@ -7,8 +7,8 @@ pub use monitor::*;
 use anyhow::Result;
 use tracing::trace;
 use zbus::{
-    connection::socket::BoxedSplit, names::OwnedUniqueName, AuthMechanism, Connection,
-    ConnectionBuilder, OwnedGuid, OwnedMatchRule,
+    connection, connection::socket::BoxedSplit, names::OwnedUniqueName, AuthMechanism, Connection,
+    OwnedGuid, OwnedMatchRule,
 };
 
 use crate::{fdo, match_rules::MatchRules, name_registry::NameRegistry};
@@ -31,7 +31,7 @@ impl Peer {
         auth_mechanism: AuthMechanism,
     ) -> Result<Self> {
         let unique_name = OwnedUniqueName::try_from(format!(":busd.{id}")).unwrap();
-        let conn = ConnectionBuilder::socket(socket)
+        let conn = connection::Builder::socket(socket)
             .server(guid)?
             .p2p()
             .auth_mechanism(auth_mechanism)

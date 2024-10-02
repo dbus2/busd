@@ -10,10 +10,11 @@ use zbus::{
     fdo::{
         ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
     },
-    interface,
+    interface, message,
     names::{BusName, InterfaceName, OwnedBusName, OwnedUniqueName, UniqueName, WellKnownName},
+    object_server::{ResponseDispatchNotifier, SignalEmitter},
     zvariant::Optional,
-    MessageHeader, OwnedGuid, OwnedMatchRule, ResponseDispatchNotifier, SignalContext,
+    OwnedGuid, OwnedMatchRule,
 };
 
 use super::msg_sender;
@@ -37,7 +38,7 @@ impl DBus {
     }
 
     /// Helper for D-Bus methods that call a function on a peer.
-    async fn call_mut_on_peer<F, R>(&self, func: F, hdr: MessageHeader<'_>) -> Result<R>
+    async fn call_mut_on_peer<F, R>(&self, func: F, hdr: message::Header<'_>) -> Result<R>
     where
         F: FnOnce(&mut Peer) -> Result<R>,
     {
@@ -64,8 +65,8 @@ impl DBus {
     /// This is already called & handled and we only need to handle it once.
     async fn hello(
         &self,
-        #[zbus(header)] hdr: MessageHeader<'_>,
-        #[zbus(signal_context)] ctxt: SignalContext<'_>,
+        #[zbus(header)] hdr: message::Header<'_>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> Result<ResponseDispatchNotifier<OwnedUniqueName>> {
         let name = msg_sender(&hdr);
         let peers = self.peers()?;
@@ -80,7 +81,7 @@ impl DBus {
         // 2. The `Hello` response to arrive before the `NameAcquired` signal.
         let unique_name = peer.unique_name().clone();
         let (response, listener) = ResponseDispatchNotifier::new(unique_name.clone());
-        let ctxt = ctxt.to_owned();
+        let ctxt = emitter.to_owned();
         spawn(async move {
             listener.await;
             let owner = UniqueName::from(unique_name);
@@ -110,7 +111,7 @@ impl DBus {
         &self,
         name: WellKnownName<'_>,
         flags: BitFlags<RequestNameFlags>,
-        #[zbus(header)] hdr: MessageHeader<'_>,
+        #[zbus(header)] hdr: message::Header<'_>,
     ) -> Result<RequestNameReply> {
         let unique_name = msg_sender(&hdr);
         let peers = self.peers()?;
@@ -133,7 +134,7 @@ impl DBus {
     async fn release_name(
         &self,
         name: WellKnownName<'_>,
-        #[zbus(header)] hdr: MessageHeader<'_>,
+        #[zbus(header)] hdr: message::Header<'_>,
     ) -> Result<ReleaseNameReply> {
         let unique_name = msg_sender(&hdr);
         let peers = self.peers()?;
@@ -175,7 +176,7 @@ impl DBus {
     async fn add_match(
         &self,
         rule: OwnedMatchRule,
-        #[zbus(header)] hdr: MessageHeader<'_>,
+        #[zbus(header)] hdr: message::Header<'_>,
     ) -> Result<()> {
         self.call_mut_on_peer(
             move |peer| {
@@ -192,7 +193,7 @@ impl DBus {
     async fn remove_match(
         &self,
         rule: OwnedMatchRule,
-        #[zbus(header)] hdr: MessageHeader<'_>,
+        #[zbus(header)] hdr: message::Header<'_>,
     ) -> Result<()> {
         self.call_mut_on_peer(move |peer| peer.remove_match_rule(rule), hdr)
             .await
@@ -384,7 +385,7 @@ impl DBus {
     /// It's also the signal to use to detect the appearance of new names on the bus.
     #[zbus(signal)]
     pub async fn name_owner_changed(
-        signal_ctxt: &SignalContext<'_>,
+        emitter: &SignalEmitter<'_>,
         name: BusName<'_>,
         old_owner: Optional<UniqueName<'_>>,
         new_owner: Optional<UniqueName<'_>>,
@@ -392,12 +393,9 @@ impl DBus {
 
     /// This signal is sent to a specific application when it loses ownership of a name.
     #[zbus(signal)]
-    pub async fn name_lost(signal_ctxt: &SignalContext<'_>, name: BusName<'_>) -> zbus::Result<()>;
+    pub async fn name_lost(emitter: &SignalEmitter<'_>, name: BusName<'_>) -> zbus::Result<()>;
 
     /// This signal is sent to a specific application when it gains ownership of a name.
     #[zbus(signal)]
-    pub async fn name_acquired(
-        signal_ctxt: &SignalContext<'_>,
-        name: BusName<'_>,
-    ) -> zbus::Result<()>;
+    pub async fn name_acquired(emitter: &SignalEmitter<'_>, name: BusName<'_>) -> zbus::Result<()>;
 }
