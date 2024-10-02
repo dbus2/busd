@@ -71,9 +71,9 @@ async fn main() -> Result<()> {
     busd::tracing_subscriber::init();
 
     let args = Args::parse();
+    let address = args.address.unwrap_or_else(default_address);
 
-    let mut bus =
-        bus::Bus::for_address(args.address.as_deref(), args.auth_mechanism.into()).await?;
+    let mut bus = bus::Bus::for_address(&address, args.auth_mechanism.into()).await?;
 
     #[cfg(unix)]
     if let Some(fd) = args.ready_fd {
@@ -110,4 +110,27 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(unix)]
+fn default_address() -> String {
+    use std::{env, path::Path};
+
+    let runtime_dir = env::var("XDG_RUNTIME_DIR")
+        .as_ref()
+        .map(|s| Path::new(s).to_path_buf())
+        .ok()
+        .unwrap_or_else(|| {
+            Path::new("/run")
+                .join("user")
+                .join(format!("{}", nix::unistd::Uid::current()))
+        });
+    let path = runtime_dir.join("busd-session");
+
+    format!("unix:path={}", path.display())
+}
+
+#[cfg(not(unix))]
+fn default_address() -> String {
+    "tcp:host=127.0.0.1,port=4242".to_string()
 }
