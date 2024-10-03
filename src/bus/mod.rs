@@ -1,16 +1,10 @@
-mod cookies;
-
-use anyhow::{bail, Error, Ok, Result};
-use futures_util::{
-    future::{select, Either},
-    pin_mut,
-};
+use anyhow::{bail, Ok, Result};
 #[cfg(unix)]
 use std::{env, path::Path};
 use std::{str::FromStr, sync::Arc};
 #[cfg(unix)]
 use tokio::fs::remove_file;
-use tokio::{spawn, task::JoinHandle};
+use tokio::spawn;
 use tracing::{debug, info, trace, warn};
 #[cfg(unix)]
 use zbus::address::transport::{Unix, UnixSocket};
@@ -30,7 +24,6 @@ use crate::{
 pub struct Bus {
     inner: Inner,
     listener: Listener,
-    cookie_task: Option<JoinHandle<Error>>,
 }
 
 // All (cheaply) cloneable fields of `Bus` go here.
@@ -99,18 +92,8 @@ impl Bus {
         peers.add_us(peer_conn).await;
         trace!("Self-dial connection created.");
 
-        let cookie_task = if auth_mechanism == AuthMechanism::Cookie {
-            let (cookie_task, cookie_sync_rx) = cookies::run_sync();
-            cookie_sync_rx.await?;
-
-            Some(cookie_task)
-        } else {
-            None
-        };
-
         Ok(Self {
             listener,
-            cookie_task,
             inner: Inner {
                 address,
                 peers,
@@ -201,21 +184,7 @@ impl Bus {
     }
 
     async fn accept_next(&mut self) -> Result<()> {
-        let task = self.cookie_task.take();
-
-        let (socket, task) = match task {
-            Some(task) => {
-                let accept_fut = self.accept();
-                pin_mut!(accept_fut);
-
-                match select(accept_fut, task).await {
-                    Either::Left((socket, task)) => (socket?, Some(task)),
-                    Either::Right((e, _)) => return Err(e?),
-                }
-            }
-            None => (self.accept().await?, None),
-        };
-        self.cookie_task = task;
+        let socket = self.accept().await?;
 
         let id = self.next_id();
         let inner = self.inner.clone();
