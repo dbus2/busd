@@ -17,8 +17,8 @@ use zbus::{
     fdo::{self, DBusProxy},
     interface, proxy,
     zvariant::ObjectPath,
-    AsyncDrop, AuthMechanism, CacheProperties, Connection, ConnectionBuilder, MatchRule,
-    MessageHeader, MessageStream, SignalContext,
+    AsyncDrop, CacheProperties, Connection, ConnectionBuilder, MatchRule, MessageHeader,
+    MessageStream, SignalContext,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -33,18 +33,16 @@ async fn greet() {
         let s = Alphanumeric.sample_string(&mut thread_rng(), 10);
         let path = temp_dir().join(s);
         let address = format!("unix:path={}", path.display());
-        greet_(&address, AuthMechanism::External).await;
+        greet_(&address).await;
     }
 
     // TCP socket
     let address = "tcp:host=127.0.0.1,port=4248".to_string();
-    greet_(&address, AuthMechanism::Anonymous).await;
+    greet_(&address).await;
 }
 
-async fn greet_(socket_addr: &str, auth_mechanism: AuthMechanism) {
-    let mut bus = Bus::for_address(Some(socket_addr), auth_mechanism)
-        .await
-        .unwrap();
+async fn greet_(socket_addr: &str) {
+    let mut bus = Bus::for_address(Some(socket_addr)).await.unwrap();
     let (tx, mut rx) = channel(1);
 
     let handle = tokio::spawn(async move {

@@ -45,7 +45,7 @@ enum Listener {
 }
 
 impl Bus {
-    pub async fn for_address(address: Option<&str>, auth_mechanism: AuthMechanism) -> Result<Self> {
+    pub async fn for_address(address: Option<&str>) -> Result<Self> {
         let mut address = match address {
             Some(address) => Address::from_str(address)?,
             None => Address::from_str(&default_address())?,
@@ -59,14 +59,21 @@ impl Bus {
                 guid.into()
             }
         };
-        let listener = match address.transport() {
+        let (listener, auth_mechanism) = match address.transport() {
             #[cfg(unix)]
-            Transport::Unix(unix) => Self::unix_stream(unix).await,
-            Transport::Tcp(tcp) => Self::tcp_stream(tcp).await,
+            Transport::Unix(unix) => (Self::unix_stream(unix).await?, AuthMechanism::External),
+            Transport::Tcp(tcp) => {
+                #[cfg(not(windows))]
+                let auth_mechanism = AuthMechanism::Anonymous;
+                #[cfg(windows)]
+                let auth_mechanism = AuthMechanism::External;
+
+                (Self::tcp_stream(tcp).await?, auth_mechanism)
+            }
             #[cfg(windows)]
             Transport::Autolaunch(_) => bail!("`autolaunch` transport is not supported (yet)."),
             _ => bail!("Unsupported address `{}`.", address),
-        }?;
+        };
 
         let peers = Peers::new();
 
