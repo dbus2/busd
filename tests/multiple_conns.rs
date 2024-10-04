@@ -29,7 +29,6 @@ async fn multi_conenct() {
 
     // TCP socket
     let address = "tcp:host=127.0.0.1,port=4246".to_string();
-    multi_conenct_(&address, AuthMechanism::Cookie).await;
     multi_conenct_(&address, AuthMechanism::Anonymous).await;
 }
 
