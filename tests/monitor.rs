@@ -7,7 +7,7 @@ use tracing::instrument;
 use zbus::{
     fdo::{DBusProxy, MonitoringProxy, NameAcquired, NameLost, NameOwnerChanged, RequestNameFlags},
     names::BusName,
-    AuthMechanism, CacheProperties, ConnectionBuilder, MessageStream, MessageType,
+    CacheProperties, ConnectionBuilder, MessageStream, MessageType,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -17,9 +17,7 @@ async fn become_monitor() {
     busd::tracing_subscriber::init();
 
     let address = "tcp:host=127.0.0.1,port=4242".to_string();
-    let mut bus = Bus::for_address(Some(&address), AuthMechanism::Anonymous)
-        .await
-        .unwrap();
+    let mut bus = Bus::for_address(Some(&address)).await.unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     let handle = tokio::spawn(async move {

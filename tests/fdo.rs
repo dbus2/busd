@@ -15,7 +15,7 @@ use tracing::instrument;
 use zbus::{
     fdo::{self, DBusProxy, ReleaseNameReply, RequestNameFlags, RequestNameReply},
     names::{BusName, WellKnownName},
-    AuthMechanism, CacheProperties, ConnectionBuilder,
+    CacheProperties, ConnectionBuilder,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -30,18 +30,16 @@ async fn name_ownership_changes() {
         let s = Alphanumeric.sample_string(&mut thread_rng(), 10);
         let path = temp_dir().join(s);
         let address = format!("unix:path={}", path.display());
-        name_ownership_changes_(&address, AuthMechanism::External).await;
+        name_ownership_changes_(&address).await;
     }
 
     // TCP socket
     let address = "tcp:host=127.0.0.1,port=4242".to_string();
-    name_ownership_changes_(&address, AuthMechanism::Anonymous).await;
+    name_ownership_changes_(&address).await;
 }
 
-async fn name_ownership_changes_(address: &str, auth_mechanism: AuthMechanism) {
-    let mut bus = Bus::for_address(Some(address), auth_mechanism)
-        .await
-        .unwrap();
+async fn name_ownership_changes_(address: &str) {
+    let mut bus = Bus::for_address(Some(address)).await.unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     let handle = tokio::spawn(async move {

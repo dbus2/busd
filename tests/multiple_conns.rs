@@ -11,7 +11,7 @@ use rand::{
 };
 use tokio::{select, sync::oneshot::channel};
 use tracing::instrument;
-use zbus::{AuthMechanism, ConnectionBuilder};
+use zbus::ConnectionBuilder;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[instrument]
@@ -24,18 +24,16 @@ async fn multi_conenct() {
         let s = Alphanumeric.sample_string(&mut thread_rng(), 10);
         let path = temp_dir().join(s);
         let address = format!("unix:path={}", path.display());
-        multi_conenct_(&address, AuthMechanism::External).await;
+        multi_conenct_(&address).await;
     }
 
     // TCP socket
     let address = "tcp:host=127.0.0.1,port=4246".to_string();
-    multi_conenct_(&address, AuthMechanism::Anonymous).await;
+    multi_conenct_(&address).await;
 }
 
-async fn multi_conenct_(socket_addr: &str, auth_mechanism: AuthMechanism) {
-    let mut bus = Bus::for_address(Some(socket_addr), auth_mechanism)
-        .await
-        .unwrap();
+async fn multi_conenct_(socket_addr: &str) {
+    let mut bus = Bus::for_address(Some(socket_addr)).await.unwrap();
     let (tx, rx) = channel();
 
     let handle = tokio::spawn(async move {

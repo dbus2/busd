@@ -6,7 +6,7 @@ use std::{fs::File, io::Write, os::fd::FromRawFd};
 use busd::bus;
 
 use anyhow::Result;
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 #[cfg(unix)]
 use tokio::{select, signal::unix::SignalKind};
 use tracing::error;
@@ -25,11 +25,6 @@ struct Args {
     #[clap(long)]
     print_address: bool,
 
-    /// The authentication mechanism to use.
-    #[clap(long)]
-    #[arg(value_enum, default_value_t = AuthMechanism::External)]
-    auth_mechanism: AuthMechanism,
-
     /// File descriptor to which readiness notifications are sent.
     ///
     /// Once the server is listening to connections on the specified socket, it will print
@@ -43,33 +38,13 @@ struct Args {
     ready_fd: Option<i32>,
 }
 
-#[derive(Copy, Clone, Debug, ValueEnum)]
-enum AuthMechanism {
-    /// This is the recommended authentication mechanism on platforms where credentials can be
-    /// transferred out-of-band, in particular Unix platforms that can perform credentials-passing
-    /// over UNIX domain sockets.
-    External,
-    /// Does not perform any authentication at all (not recommended).
-    Anonymous,
-}
-
-impl From<AuthMechanism> for zbus::AuthMechanism {
-    fn from(auth_mechanism: AuthMechanism) -> Self {
-        match auth_mechanism {
-            AuthMechanism::External => zbus::AuthMechanism::External,
-            AuthMechanism::Anonymous => zbus::AuthMechanism::Anonymous,
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     busd::tracing_subscriber::init();
 
     let args = Args::parse();
 
-    let mut bus =
-        bus::Bus::for_address(args.address.as_deref(), args.auth_mechanism.into()).await?;
+    let mut bus = bus::Bus::for_address(args.address.as_deref()).await?;
 
     #[cfg(unix)]
     if let Some(fd) = args.ready_fd {
