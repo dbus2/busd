@@ -1,4 +1,5 @@
 pub mod bus;
+pub mod configuration;
 pub mod fdo;
 pub mod match_rules;
 pub mod name_registry;
