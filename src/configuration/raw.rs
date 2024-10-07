@@ -5,8 +5,8 @@ use std::{path::PathBuf, str::FromStr};
 use serde::Deserialize;
 
 use super::{
-    ApparmorMode, Associate, IncludeElement, LimitElement, Principal, RuleMatch, RuleMatchType,
-    Type,
+    policy::{RuleMatch, RuleMatchType},
+    ApparmorMode, Associate, IncludeElement, LimitElement, Principal, Type,
 };
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
