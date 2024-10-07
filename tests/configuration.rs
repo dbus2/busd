@@ -5,7 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use busd::configuration::{Configuration, RawConfiguration};
+use busd::configuration::Configuration;
 
 #[test]
 fn find_and_parse_real_configuration_files() {
@@ -30,14 +30,8 @@ fn find_and_parse_real_configuration_files() {
             Err(_) => continue,
         };
 
-        let got = RawConfiguration::from_str(&configuration_text).unwrap_or_else(|err| {
+        Configuration::from_str(&configuration_text).unwrap_or_else(|err| {
             panic!("should correctly parse {}: {err:?}", file_path.display())
-        });
-        Configuration::try_from(got).unwrap_or_else(|err| {
-            panic!(
-                "should validate and convert {}: {err:?}",
-                file_path.display()
-            )
         });
     }
 }

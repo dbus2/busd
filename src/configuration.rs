@@ -7,21 +7,14 @@ use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-struct Apparmor {
-    #[serde(rename = "@mode")]
-    mode: Option<ApparmorMode>,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-enum ApparmorMode {
+pub enum ApparmorMode {
     Disabled,
     Enabled,
     Required,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-struct Associate {
+pub struct Associate {
     #[serde(rename = "@context")]
     context: String,
     #[serde(rename = "@own")]
@@ -49,6 +42,15 @@ pub struct Configuration {
     syslog: Option<bool>,
     r#type: Option<Type>,
     user: Option<Principal>,
+}
+impl FromStr for Configuration {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        RawConfiguration::from_str(s)
+            .map_err(Error::DeserializeXml)
+            .and_then(Self::try_from)
+    }
 }
 impl TryFrom<RawConfiguration> for Configuration {
     type Error = Error;
@@ -105,28 +107,22 @@ impl TryFrom<RawConfiguration> for Configuration {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum Error {
+    DeserializeXml(quick_xml::DeError),
     PolicyHasMultipleAttributes,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-enum IgnoreMissing {
+pub enum IgnoreMissing {
     No,
     Yes,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-enum Include {
-    Session,
-    System,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-struct IncludeElement {
+pub struct IncludeElement {
     #[serde(rename = "@ignore_missing")]
     ignore_missing: Option<IgnoreMissing>,
     #[serde(rename = "$text")]
@@ -135,7 +131,7 @@ struct IncludeElement {
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-struct LimitElement {
+pub struct LimitElement {
     #[serde(rename = "@name")]
     name: LimitName,
     #[serde(rename = "$text")]
@@ -144,7 +140,7 @@ struct LimitElement {
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
-enum LimitName {
+pub enum LimitName {
     AuthTimeout,
     MaxCompletedConnections,
     MaxConnectionsPerUser,
@@ -168,13 +164,13 @@ enum LimitName {
 // except those with field-specific attributes
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-struct PathBufElement {
+pub struct PathBufElement {
     #[serde(rename = "$text")]
     text: PathBuf,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum Policy {
+pub enum Policy {
     Console { rules: Vec<Rule> },
     DefaultContext { rules: Vec<Rule> },
     Group { group: Principal, rules: Vec<Rule> },
@@ -204,8 +200,8 @@ impl TryFrom<RawPolicy> for Policy {
                 rules,
                 user: None,
             } => Ok(match pc {
-                PolicyContext::Default => Self::DefaultContext { rules },
-                PolicyContext::Mandatory => Self::MandatoryContext { rules },
+                RawPolicyContext::Default => Self::DefaultContext { rules },
+                RawPolicyContext::Mandatory => Self::MandatoryContext { rules },
             }),
             RawPolicy {
                 at_console: None,
@@ -228,30 +224,24 @@ impl TryFrom<RawPolicy> for Policy {
 // TODO: impl PartialOrd/Ord for Policy, for order in which policies are applied to a connection
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-enum PolicyContext {
-    Default,
-    Mandatory,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-#[serde(default)]
-struct PolicyList {
-    policy: Vec<RawPolicy>,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase", untagged)]
-enum Principal {
+pub enum Principal {
     Id(u32),
     Name(String),
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+struct RawApparmor {
+    #[serde(rename = "@mode")]
+    mode: Option<ApparmorMode>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default)]
-pub struct RawConfiguration {
+struct RawConfiguration {
     allow_anonymous: Option<()>,
-    apparmor: Option<Apparmor>,
+    apparmor: Option<RawApparmor>,
     auth: Vec<String>,
     fork: Option<()>,
     include: Vec<IncludeElement>,
@@ -261,14 +251,14 @@ pub struct RawConfiguration {
     listen: Vec<String>,
     pidfile: Option<PathBuf>,
     policy: Vec<RawPolicy>,
-    selinux: Option<Selinux>,
+    selinux: Option<RawSelinux>,
     servicedir: Vec<PathBufElement>,
     servicehelper: Option<PathBuf>,
     standard_session_servicedirs: Option<()>,
     standard_system_servicedirs: Option<()>,
     syslog: Option<()>,
-    r#type: Vec<TypeElement>,
-    user: Vec<UserElement>,
+    r#type: Vec<RawTypeElement>,
+    user: Vec<RawUserElement>,
 }
 impl FromStr for RawConfiguration {
     type Err = quick_xml::DeError;
@@ -286,7 +276,7 @@ struct RawPolicy {
     #[serde(rename = "@at_console")]
     at_console: Option<bool>,
     #[serde(rename = "@context")]
-    context: Option<PolicyContext>,
+    context: Option<RawPolicyContext>,
     #[serde(rename = "@group")]
     group: Option<Principal>,
     #[serde(default, rename = "$value")]
@@ -297,14 +287,41 @@ struct RawPolicy {
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-enum Rule {
+enum RawPolicyContext {
+    Default,
+    Mandatory,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+struct RawSelinux {
+    associate: Vec<Associate>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+struct RawTypeElement {
+    #[serde(rename = "$text")]
+    text: Type,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+struct RawUserElement {
+    #[serde(rename = "$text")]
+    text: Principal,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Rule {
     Allow(RuleAttributes),
     Deny(RuleAttributes),
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, rename_all = "lowercase")]
-struct RuleAttributes {
+pub struct RuleAttributes {
     #[serde(rename = "@send_interface")]
     send_interface: Option<RuleMatch>,
     #[serde(rename = "@send_member")]
@@ -351,14 +368,14 @@ struct RuleAttributes {
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case", untagged)]
-enum RuleMatch {
+pub enum RuleMatch {
     #[serde(rename = "*")]
     Any,
     One(String),
 }
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
-enum RuleMatchType {
+pub enum RuleMatchType {
     #[serde(rename = "*")]
     Any,
     Error,
@@ -367,31 +384,11 @@ enum RuleMatchType {
     Signal,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-#[serde(default)]
-struct Selinux {
-    associate: Vec<Associate>,
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-enum Type {
+pub enum Type {
     Session,
     System,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-struct TypeElement {
-    #[serde(rename = "$text")]
-    text: Type,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-struct UserElement {
-    #[serde(rename = "$text")]
-    text: Principal,
 }
 
 #[cfg(test)]
@@ -410,8 +407,7 @@ mod tests {
     </busconfig>
             "#;
 
-        let got = RawConfiguration::from_str(input).expect("should parse input XML");
-        let got = Configuration::try_from(got).expect("should validate and convert");
+        let got = Configuration::from_str(input).expect("should parse input XML");
 
         assert_eq!(got.r#type, Some(Type::Session));
     }
@@ -428,8 +424,7 @@ mod tests {
     </busconfig>
             "#;
 
-        let got = RawConfiguration::from_str(input).expect("should parse input XML");
-        let got = Configuration::try_from(got).expect("should validate and convert");
+        let got = Configuration::from_str(input).expect("should parse input XML");
 
         assert_eq!(got.user, Some(Principal::Name(String::from("nobody"))));
     }
@@ -461,8 +456,7 @@ mod tests {
 </busconfig>
         "#;
 
-        let got = RawConfiguration::from_str(input).expect("should parse input XML");
-        let got = Configuration::try_from(got).expect("should validate and convert");
+        let got = Configuration::from_str(input).expect("should parse input XML");
 
         assert_eq!(
             got,
@@ -535,8 +529,7 @@ mod tests {
 </busconfig>
         "#;
 
-        let got = RawConfiguration::from_str(input).expect("should parse input XML");
-        let got = Configuration::try_from(got).expect("should validate and convert");
+        let got = Configuration::from_str(input).expect("should parse input XML");
 
         assert_eq!(
             got,
@@ -570,8 +563,7 @@ mod tests {
 </busconfig>
         "#;
 
-        let got = RawConfiguration::from_str(input).expect("should parse input XML");
-        let got = Configuration::try_from(got).expect("should validate and convert");
+        let got = Configuration::from_str(input).expect("should parse input XML");
 
         assert_eq!(
             got,
