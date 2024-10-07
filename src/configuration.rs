@@ -3,7 +3,10 @@
 
 use std::{path::PathBuf, str::FromStr};
 
+use raw::{RawConfiguration, RawPolicy, RawPolicyContext, RawRule, RawRuleAttributes};
 use serde::Deserialize;
+
+mod raw;
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -252,142 +255,6 @@ impl TryFrom<RawPolicy> for Policy {
 pub enum Principal {
     Id(u32),
     Name(String),
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-struct RawApparmor {
-    #[serde(rename = "@mode")]
-    mode: Option<ApparmorMode>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-#[serde(default)]
-struct RawConfiguration {
-    allow_anonymous: Option<()>,
-    apparmor: Option<RawApparmor>,
-    auth: Vec<String>,
-    fork: Option<()>,
-    include: Vec<IncludeElement>,
-    includedir: Vec<PathBufElement>,
-    keep_umask: Option<()>,
-    limit: Vec<LimitElement>,
-    listen: Vec<String>,
-    pidfile: Option<PathBuf>,
-    policy: Vec<RawPolicy>,
-    selinux: Option<RawSelinux>,
-    servicedir: Vec<PathBufElement>,
-    servicehelper: Option<PathBuf>,
-    standard_session_servicedirs: Option<()>,
-    standard_system_servicedirs: Option<()>,
-    syslog: Option<()>,
-    r#type: Vec<RawTypeElement>,
-    user: Vec<RawUserElement>,
-}
-impl FromStr for RawConfiguration {
-    type Err = quick_xml::DeError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // TODO: validate expected DOCTYPE
-        // TODO: validate expected root element (busconfig)
-        quick_xml::de::from_str(s)
-    }
-}
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-struct RawPolicy {
-    #[serde(rename = "@at_console")]
-    at_console: Option<bool>,
-    #[serde(rename = "@context")]
-    context: Option<RawPolicyContext>,
-    #[serde(rename = "@group")]
-    group: Option<Principal>,
-    #[serde(default, rename = "$value")]
-    rules: Vec<RawRule>,
-    #[serde(rename = "@user")]
-    user: Option<Principal>,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-enum RawPolicyContext {
-    Default,
-    Mandatory,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-enum RawRule {
-    Allow(RawRuleAttributes),
-    Deny(RawRuleAttributes),
-}
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-#[serde(default, rename_all = "lowercase")]
-struct RawRuleAttributes {
-    #[serde(rename = "@send_interface")]
-    send_interface: Option<RuleMatch>,
-    #[serde(rename = "@send_member")]
-    send_member: Option<RuleMatch>,
-    #[serde(rename = "@send_error")]
-    send_error: Option<RuleMatch>,
-    #[serde(rename = "@send_broadcast")]
-    send_broadcast: Option<bool>,
-    #[serde(rename = "@send_destination")]
-    send_destination: Option<RuleMatch>,
-    #[serde(rename = "@send_destination_prefix")]
-    send_destination_prefix: Option<String>,
-    #[serde(rename = "@send_type")]
-    send_type: Option<RuleMatchType>,
-    #[serde(rename = "@send_path")]
-    send_path: Option<RuleMatch>,
-    #[serde(rename = "@receive_interface")]
-    receive_interface: Option<RuleMatch>,
-    #[serde(rename = "@receive_member")]
-    receive_member: Option<RuleMatch>,
-    #[serde(rename = "@receive_error")]
-    receive_error: Option<RuleMatch>,
-    #[serde(rename = "@receive_sender")]
-    receive_sender: Option<RuleMatch>,
-    #[serde(rename = "@receive_type")]
-    receive_type: Option<RuleMatchType>,
-    #[serde(rename = "@receive_path")]
-    receive_path: Option<RuleMatch>,
-    #[serde(rename = "@send_requested_reply")]
-    send_requested_reply: Option<bool>,
-    #[serde(rename = "@receive_requested_reply")]
-    receive_requested_reply: Option<bool>,
-    #[serde(rename = "@eavesdrop")]
-    eavesdrop: Option<bool>,
-    #[serde(rename = "@own")]
-    own: Option<RuleMatch>,
-    #[serde(rename = "@own_prefix")]
-    own_prefix: Option<String>,
-    #[serde(rename = "@user")]
-    user: Option<RuleMatch>,
-    #[serde(rename = "@group")]
-    group: Option<RuleMatch>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-#[serde(default)]
-struct RawSelinux {
-    associate: Vec<Associate>,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-struct RawTypeElement {
-    #[serde(rename = "$text")]
-    text: Type,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-struct RawUserElement {
-    #[serde(rename = "$text")]
-    text: Principal,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
