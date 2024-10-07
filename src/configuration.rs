@@ -8,10 +8,11 @@ use serde::Deserialize;
 
 mod raw;
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ApparmorMode {
     Disabled,
+    #[default]
     Enabled,
     Required,
 }
@@ -27,13 +28,12 @@ pub struct Associate {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Configuration {
     allow_anonymous: Option<bool>,
-    apparmor: Option<ApparmorMode>,
+    apparmor: ApparmorMode,
     auth: Vec<String>,
     fork: Option<bool>,
     // TODO: consider processing `include` more to remove XML-specific structure
     include: Vec<IncludeElement>,
-    // TODO: consider processing `include` more to remove XML-specific structure
-    includedir: Vec<PathBufElement>,
+    includedir: Vec<PathBuf>,
     keep_umask: Option<bool>,
     // TODO: consider processing `include` more to remove XML-specific structure
     limit: Vec<LimitElement>,
@@ -41,8 +41,7 @@ pub struct Configuration {
     pidfile: Option<PathBuf>,
     policy: Vec<Policy>,
     selinux: Vec<Associate>,
-    // TODO: consider processing `include` more to remove XML-specific structure
-    servicedir: Vec<PathBufElement>,
+    servicedir: Vec<PathBuf>,
     servicehelper: Option<PathBuf>,
     standard_session_servicedirs: Option<bool>,
     standard_system_servicedirs: Option<bool>,
@@ -78,11 +77,12 @@ impl TryFrom<RawConfiguration> for Configuration {
             apparmor: match value.apparmor {
                 Some(a) => a.mode,
                 None => None,
-            },
+            }
+            .unwrap_or_default(),
             auth: value.auth,
             fork: value.fork.map(|_| true),
             include: value.include,
-            includedir: value.includedir,
+            includedir: value.includedir.into_iter().map(|pb| pb.text).collect(),
             keep_umask: value.keep_umask.map(|_| true),
             limit: value.limit,
             listen: value.listen,
@@ -94,7 +94,7 @@ impl TryFrom<RawConfiguration> for Configuration {
                 Some(s) => s.associate,
                 None => vec![],
             },
-            servicedir: value.servicedir,
+            servicedir: value.servicedir.into_iter().map(|pb| pb.text).collect(),
             servicehelper: value.servicehelper,
             standard_session_servicedirs: value.standard_session_servicedirs.map(|_| true),
             standard_system_servicedirs: value.standard_system_servicedirs.map(|_| true),
@@ -178,15 +178,6 @@ pub enum LimitName {
 pub struct OwnRule {
     own: Option<RuleMatch>,
     own_prefix: Option<String>,
-}
-
-// reuse this between Vec<PathBuf> fields,
-// except those with field-specific attributes
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub struct PathBufElement {
-    #[serde(rename = "$text")]
-    text: PathBuf,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -635,7 +626,7 @@ mod tests {
  "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig>
-    <apparmor mode="enabled" />
+    <apparmor mode="required" />
     <selinux>
         <associate own="org.freedesktop.Foobar" context="foo_t" />
     </selinux>
@@ -647,7 +638,7 @@ mod tests {
         assert_eq!(
             got,
             Configuration {
-                apparmor: Some(ApparmorMode::Enabled),
+                apparmor: ApparmorMode::Required,
                 selinux: vec![Associate {
                     context: String::from("foo_t"),
                     own: String::from("org.freedesktop.Foobar")

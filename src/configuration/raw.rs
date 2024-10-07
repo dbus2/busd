@@ -5,8 +5,8 @@ use std::{path::PathBuf, str::FromStr};
 use serde::Deserialize;
 
 use super::{
-    ApparmorMode, Associate, IncludeElement, LimitElement, PathBufElement, Principal, RuleMatch,
-    RuleMatchType, Type,
+    ApparmorMode, Associate, IncludeElement, LimitElement, Principal, RuleMatch, RuleMatchType,
+    Type,
 };
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -24,14 +24,14 @@ pub(super) struct RawConfiguration {
     pub auth: Vec<String>,
     pub fork: Option<()>,
     pub include: Vec<IncludeElement>,
-    pub includedir: Vec<PathBufElement>,
+    pub includedir: Vec<RawPathBufElement>,
     pub keep_umask: Option<()>,
     pub limit: Vec<LimitElement>,
     pub listen: Vec<String>,
     pub pidfile: Option<PathBuf>,
     pub policy: Vec<RawPolicy>,
     pub selinux: Option<RawSelinux>,
-    pub servicedir: Vec<PathBufElement>,
+    pub servicedir: Vec<RawPathBufElement>,
     pub servicehelper: Option<PathBuf>,
     pub standard_session_servicedirs: Option<()>,
     pub standard_system_servicedirs: Option<()>,
@@ -143,4 +143,13 @@ pub(super) struct RawTypeElement {
 pub(super) struct RawUserElement {
     #[serde(rename = "$text")]
     pub text: Principal,
+}
+
+// reuse this between Vec<PathBuf> fields,
+// except those with field-specific attributes
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub(super) struct RawPathBufElement {
+    #[serde(rename = "$text")]
+    pub text: PathBuf,
 }
