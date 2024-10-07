@@ -27,14 +27,18 @@ pub struct Configuration {
     apparmor: Option<ApparmorMode>,
     auth: Vec<String>,
     fork: Option<bool>,
+    // TODO: consider processing `include` more to remove XML-specific structure
     include: Vec<IncludeElement>,
+    // TODO: consider processing `include` more to remove XML-specific structure
     includedir: Vec<PathBufElement>,
     keep_umask: Option<bool>,
+    // TODO: consider processing `include` more to remove XML-specific structure
     limit: Vec<LimitElement>,
     listen: Vec<String>,
     pidfile: Option<PathBuf>,
     policy: Vec<Policy>,
     selinux: Vec<Associate>,
+    // TODO: consider processing `include` more to remove XML-specific structure
     servicedir: Vec<PathBufElement>,
     servicehelper: Option<PathBuf>,
     standard_session_servicedirs: Option<bool>,
@@ -107,10 +111,17 @@ impl TryFrom<RawConfiguration> for Configuration {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ConnectRule {
+    group: Option<RuleMatch>,
+    user: Option<RuleMatch>,
+}
+
 #[derive(Clone, Debug)]
 pub enum Error {
     DeserializeXml(quick_xml::DeError),
     PolicyHasMultipleAttributes,
+    RuleHasInvalidCombinationOfAttributes,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -160,6 +171,12 @@ pub enum LimitName {
     ReplyTimeout,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct OwnRule {
+    own: Option<RuleMatch>,
+    own_prefix: Option<String>,
+}
+
 // reuse this between Vec<PathBuf> fields,
 // except those with field-specific attributes
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -181,14 +198,21 @@ pub enum Policy {
 impl TryFrom<RawPolicy> for Policy {
     type Error = Error;
     fn try_from(value: RawPolicy) -> Result<Self, Self::Error> {
-        // TODO: more validations and conversions as documented against dbus-daemon
+        let mut rules: Vec<Rule> = Vec::with_capacity(value.rules.len());
+        for rule in value.rules {
+            match Rule::try_from(rule) {
+                Ok(ok) => rules.push(ok),
+                Err(err) => return Err(err),
+            }
+        }
+
         match value {
             RawPolicy {
                 at_console: Some(b),
                 context: None,
                 group: None,
-                rules,
                 user: None,
+                ..
             } => Ok(match b {
                 true => Self::Console { rules },
                 false => Self::NoConsole { rules },
@@ -197,8 +221,8 @@ impl TryFrom<RawPolicy> for Policy {
                 at_console: None,
                 context: Some(pc),
                 group: None,
-                rules,
                 user: None,
+                ..
             } => Ok(match pc {
                 RawPolicyContext::Default => Self::DefaultContext { rules },
                 RawPolicyContext::Mandatory => Self::MandatoryContext { rules },
@@ -207,15 +231,15 @@ impl TryFrom<RawPolicy> for Policy {
                 at_console: None,
                 context: None,
                 group: Some(p),
-                rules,
                 user: None,
+                ..
             } => Ok(Self::Group { group: p, rules }),
             RawPolicy {
                 at_console: None,
                 context: None,
                 group: None,
-                rules,
                 user: Some(p),
+                ..
             } => Ok(Self::User { user: p, rules }),
             _ => Err(Error::PolicyHasMultipleAttributes),
         }
@@ -280,7 +304,7 @@ struct RawPolicy {
     #[serde(rename = "@group")]
     group: Option<Principal>,
     #[serde(default, rename = "$value")]
-    rules: Vec<Rule>,
+    rules: Vec<RawRule>,
     #[serde(rename = "@user")]
     user: Option<Principal>,
 }
@@ -292,36 +316,16 @@ enum RawPolicyContext {
     Mandatory,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
-#[serde(default)]
-struct RawSelinux {
-    associate: Vec<Associate>,
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-struct RawTypeElement {
-    #[serde(rename = "$text")]
-    text: Type,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-struct RawUserElement {
-    #[serde(rename = "$text")]
-    text: Principal,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum Rule {
-    Allow(RuleAttributes),
-    Deny(RuleAttributes),
+enum RawRule {
+    Allow(RawRuleAttributes),
+    Deny(RawRuleAttributes),
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, rename_all = "lowercase")]
-pub struct RuleAttributes {
+struct RawRuleAttributes {
     #[serde(rename = "@send_interface")]
     send_interface: Option<RuleMatch>,
     #[serde(rename = "@send_member")]
@@ -366,6 +370,185 @@ pub struct RuleAttributes {
     group: Option<RuleMatch>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+struct RawSelinux {
+    associate: Vec<Associate>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+struct RawTypeElement {
+    #[serde(rename = "$text")]
+    text: Type,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+struct RawUserElement {
+    #[serde(rename = "$text")]
+    text: Principal,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ReceiveRule {
+    eavesdrop: Option<bool>,
+    receive_error: Option<RuleMatch>,
+    receive_interface: Option<RuleMatch>,
+    receive_member: Option<RuleMatch>,
+    receive_path: Option<RuleMatch>,
+    receive_requested_reply: Option<bool>,
+    receive_sender: Option<RuleMatch>,
+    receive_type: Option<RuleMatchType>,
+}
+
+pub type Rule = (RuleEffect, RulePhase);
+impl TryFrom<RawRule> for Rule {
+    type Error = Error;
+
+    fn try_from(value: RawRule) -> Result<Self, Self::Error> {
+        let (effect, attributes) = match value {
+            RawRule::Allow(attributes) => (RuleEffect::Allow, attributes),
+            RawRule::Deny(attributes) => (RuleEffect::Deny, attributes),
+        };
+        match attributes {
+            RawRuleAttributes {
+                eavesdrop,
+                group: None,
+                own: None,
+                own_prefix: None,
+                receive_error,
+                receive_interface,
+                receive_member,
+                receive_path,
+                receive_requested_reply,
+                receive_sender,
+                receive_type,
+                send_broadcast: None,
+                send_destination: None,
+                send_destination_prefix: None,
+                send_error: None,
+                send_interface: None,
+                send_member: None,
+                send_path: None,
+                send_requested_reply: None,
+                send_type: None,
+                user: None,
+            } => Ok((
+                effect,
+                RulePhase::Receive(ReceiveRule {
+                    eavesdrop,
+                    receive_error,
+                    receive_interface,
+                    receive_member,
+                    receive_path,
+                    receive_requested_reply,
+                    receive_sender,
+                    receive_type,
+                }),
+            )),
+            RawRuleAttributes {
+                eavesdrop,
+                group: None,
+                own: None,
+                own_prefix: None,
+                receive_error: None,
+                receive_interface: None,
+                receive_member: None,
+                receive_path: None,
+                receive_requested_reply: None,
+                receive_sender: None,
+                receive_type: None,
+                send_broadcast,
+                send_destination,
+                send_destination_prefix,
+                send_error,
+                send_interface,
+                send_member,
+                send_path,
+                send_requested_reply,
+                send_type,
+                user: None,
+            } => Ok((
+                effect,
+                RulePhase::Send(SendRule {
+                    eavesdrop,
+                    send_broadcast,
+                    send_destination,
+                    send_destination_prefix,
+                    send_error,
+                    send_interface,
+                    send_member,
+                    send_path,
+                    send_requested_reply,
+                    send_type,
+                }),
+            )),
+            RawRuleAttributes {
+                eavesdrop: None,
+                group: None,
+                own,
+                own_prefix,
+                receive_error: None,
+                receive_interface: None,
+                receive_member: None,
+                receive_path: None,
+                receive_requested_reply: None,
+                receive_sender: None,
+                receive_type: None,
+                send_broadcast: None,
+                send_destination: None,
+                send_destination_prefix: None,
+                send_error: None,
+                send_interface: None,
+                send_member: None,
+                send_path: None,
+                send_requested_reply: None,
+                send_type: None,
+                user: None,
+            } => Ok((effect, RulePhase::Own(OwnRule { own, own_prefix }))),
+            RawRuleAttributes {
+                eavesdrop: None,
+                group,
+                own: None,
+                own_prefix: None,
+                receive_error: None,
+                receive_interface: None,
+                receive_member: None,
+                receive_path: None,
+                receive_requested_reply: None,
+                receive_sender: None,
+                receive_type: None,
+                send_broadcast: None,
+                send_destination: None,
+                send_destination_prefix: None,
+                send_error: None,
+                send_interface: None,
+                send_member: None,
+                send_path: None,
+                send_requested_reply: None,
+                send_type: None,
+                user,
+            } => Ok((effect, RulePhase::Connect(ConnectRule { group, user }))),
+            _ => Err(Error::RuleHasInvalidCombinationOfAttributes),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum RuleEffect {
+    Allow,
+    Deny,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum RulePhase {
+    Connect(ConnectRule),
+    Own(OwnRule),
+    Receive(ReceiveRule),
+    Send(SendRule),
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum RuleMatch {
@@ -382,6 +565,20 @@ pub enum RuleMatchType {
     MethodCall,
     MethodReturn,
     Signal,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SendRule {
+    eavesdrop: Option<bool>,
+    send_broadcast: Option<bool>,
+    send_destination: Option<RuleMatch>,
+    send_destination_prefix: Option<String>,
+    send_error: Option<RuleMatch>,
+    send_interface: Option<RuleMatch>,
+    send_member: Option<RuleMatch>,
+    send_path: Option<RuleMatch>,
+    send_requested_reply: Option<bool>,
+    send_type: Option<RuleMatchType>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -463,52 +660,67 @@ mod tests {
             Configuration {
                 policy: vec![
                     Policy::User {
-                        rules: vec![Rule::Allow(RuleAttributes {
-                            send_destination: Some(RuleMatch::One(String::from(
-                                "com.redhat.PrinterDriversInstaller"
-                            ))),
-                            send_interface: Some(RuleMatch::One(String::from(
-                                "com.redhat.PrinterDriversInstaller"
-                            ))),
-                            ..Default::default()
-                        })],
+                        rules: vec![(
+                            RuleEffect::Allow,
+                            RulePhase::Send(SendRule {
+                                send_destination: Some(RuleMatch::One(String::from(
+                                    "com.redhat.PrinterDriversInstaller"
+                                ))),
+                                send_interface: Some(RuleMatch::One(String::from(
+                                    "com.redhat.PrinterDriversInstaller"
+                                ))),
+                                ..Default::default()
+                            })
+                        )],
                         user: Principal::Name(String::from("root")),
                     },
                     Policy::DefaultContext {
                         rules: vec![
-                            Rule::Allow(RuleAttributes {
-                                own: Some(RuleMatch::One(String::from(
-                                    "com.redhat.PrinterDriversInstaller"
-                                ))),
-                                ..Default::default()
-                            }),
-                            Rule::Deny(RuleAttributes {
-                                send_destination: Some(RuleMatch::One(String::from(
-                                    "com.redhat.PrinterDriversInstaller"
-                                ))),
-                                send_interface: Some(RuleMatch::One(String::from(
-                                    "com.redhat.PrinterDriversInstaller"
-                                ))),
-                                ..Default::default()
-                            }),
-                            Rule::Allow(RuleAttributes {
-                                send_destination: Some(RuleMatch::One(String::from(
-                                    "com.redhat.PrinterDriversInstaller"
-                                ))),
-                                send_interface: Some(RuleMatch::One(String::from(
-                                    "org.freedesktop.DBus.Introspectable"
-                                ))),
-                                ..Default::default()
-                            }),
-                            Rule::Allow(RuleAttributes {
-                                send_destination: Some(RuleMatch::One(String::from(
-                                    "com.redhat.PrinterDriversInstaller"
-                                ))),
-                                send_interface: Some(RuleMatch::One(String::from(
-                                    "org.freedesktop.DBus.Properties"
-                                ))),
-                                ..Default::default()
-                            }),
+                            (
+                                RuleEffect::Allow,
+                                RulePhase::Own(OwnRule {
+                                    own: Some(RuleMatch::One(String::from(
+                                        "com.redhat.PrinterDriversInstaller"
+                                    ))),
+                                    ..Default::default()
+                                })
+                            ),
+                            (
+                                RuleEffect::Deny,
+                                RulePhase::Send(SendRule {
+                                    send_destination: Some(RuleMatch::One(String::from(
+                                        "com.redhat.PrinterDriversInstaller"
+                                    ))),
+                                    send_interface: Some(RuleMatch::One(String::from(
+                                        "com.redhat.PrinterDriversInstaller"
+                                    ))),
+                                    ..Default::default()
+                                })
+                            ),
+                            (
+                                RuleEffect::Allow,
+                                RulePhase::Send(SendRule {
+                                    send_destination: Some(RuleMatch::One(String::from(
+                                        "com.redhat.PrinterDriversInstaller"
+                                    ))),
+                                    send_interface: Some(RuleMatch::One(String::from(
+                                        "org.freedesktop.DBus.Introspectable"
+                                    ))),
+                                    ..Default::default()
+                                })
+                            ),
+                            (
+                                RuleEffect::Allow,
+                                RulePhase::Send(SendRule {
+                                    send_destination: Some(RuleMatch::One(String::from(
+                                        "com.redhat.PrinterDriversInstaller"
+                                    ))),
+                                    send_interface: Some(RuleMatch::One(String::from(
+                                        "org.freedesktop.DBus.Properties"
+                                    ))),
+                                    ..Default::default()
+                                })
+                            ),
                         ]
                     }
                 ],
@@ -573,6 +785,68 @@ mod tests {
                     context: String::from("foo_t"),
                     own: String::from("org.freedesktop.Foobar")
                 },],
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn busconfig_fromstr_receiverule_ok() {
+        // from https://github.com/OpenPrinting/system-config-printer/blob/caa1ba33da20fd2a82cee0bcc97589fede512cc8/dbus/com.redhat.PrinterDriversInstaller.conf
+        // selected because it has a <deny /> in the middle of a list of <allow />s
+        let input = r#"
+            <!DOCTYPE busconfig PUBLIC
+ "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+	<policy context="default">
+		<allow eavesdrop="false" />
+		<allow eavesdrop="true" />
+		<deny eavesdrop="false" receive_requested_reply="true" />
+		<deny eavesdrop="true" receive_requested_reply="true" />
+	</policy>
+</busconfig>
+        "#;
+
+        let got = Configuration::from_str(input).expect("should parse input XML");
+
+        assert_eq!(
+            got,
+            Configuration {
+                policy: vec![Policy::DefaultContext {
+                    rules: vec![
+                        (
+                            RuleEffect::Allow,
+                            RulePhase::Receive(ReceiveRule {
+                                eavesdrop: Some(false),
+                                ..Default::default()
+                            })
+                        ),
+                        (
+                            RuleEffect::Allow,
+                            RulePhase::Receive(ReceiveRule {
+                                eavesdrop: Some(true),
+                                ..Default::default()
+                            })
+                        ),
+                        (
+                            RuleEffect::Deny,
+                            RulePhase::Receive(ReceiveRule {
+                                eavesdrop: Some(false),
+                                receive_requested_reply: Some(true),
+                                ..Default::default()
+                            })
+                        ),
+                        (
+                            RuleEffect::Deny,
+                            RulePhase::Receive(ReceiveRule {
+                                eavesdrop: Some(true),
+                                receive_requested_reply: Some(true),
+                                ..Default::default()
+                            })
+                        ),
+                    ]
+                }],
                 ..Default::default()
             }
         );
