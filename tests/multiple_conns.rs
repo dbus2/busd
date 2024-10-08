@@ -11,7 +11,7 @@ use rand::{
 };
 use tokio::{select, sync::oneshot::channel};
 use tracing::instrument;
-use zbus::ConnectionBuilder;
+use zbus::connection;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[instrument]
@@ -59,7 +59,7 @@ async fn multi_conenct_(socket_addr: &str) {
 async fn multi_clients_connect(socket_addr: &str) -> anyhow::Result<()> {
     // Create 10 connections simultaneously.
     let conns: Vec<_> = (0..10)
-        .map(|_| ConnectionBuilder::address(socket_addr).unwrap().build())
+        .map(|_| connection::Builder::address(socket_addr).unwrap().build())
         .collect();
     join_all(conns).await;
 

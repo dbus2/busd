@@ -14,11 +14,14 @@ use rand::{
 use tokio::{select, sync::mpsc::channel, time::timeout};
 use tracing::instrument;
 use zbus::{
+    connection,
     fdo::{self, DBusProxy},
-    interface, proxy,
+    interface, message,
+    object_server::SignalEmitter,
+    proxy,
+    proxy::CacheProperties,
     zvariant::ObjectPath,
-    AsyncDrop, CacheProperties, Connection, ConnectionBuilder, MatchRule, MessageHeader,
-    MessageStream, SignalContext,
+    AsyncDrop, Connection, MatchRule, MessageStream,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -78,8 +81,8 @@ async fn greet_service(socket_addr: &str) -> anyhow::Result<Connection> {
         async fn say_hello(
             &mut self,
             name: &str,
-            #[zbus(signal_context)] ctxt: SignalContext<'_>,
-            #[zbus(header)] header: MessageHeader<'_>,
+            #[zbus(signal_emitter)] ctxt: SignalEmitter<'_>,
+            #[zbus(header)] header: message::Header<'_>,
         ) -> fdo::Result<String> {
             self.count += 1;
             let path = header.path().unwrap().clone();
@@ -92,7 +95,7 @@ async fn greet_service(socket_addr: &str) -> anyhow::Result<Connection> {
 
         #[zbus(signal)]
         async fn greeted(
-            ctxt: &SignalContext<'_>,
+            ctxt: &SignalEmitter<'_>,
             name: &str,
             count: u64,
             path: ObjectPath<'_>,
@@ -100,7 +103,7 @@ async fn greet_service(socket_addr: &str) -> anyhow::Result<Connection> {
     }
 
     let greeter = Greeter { count: 0 };
-    ConnectionBuilder::address(socket_addr)?
+    connection::Builder::address(socket_addr)?
         .name("org.zbus.MyGreeter")?
         .serve_at("/org/zbus/MyGreeter", greeter)?
         .build()
@@ -121,7 +124,7 @@ async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
         async fn greeted(name: &str, count: u64, path: ObjectPath<'_>);
     }
 
-    let conn = ConnectionBuilder::address(socket_addr)?.build().await?;
+    let conn = connection::Builder::address(socket_addr)?.build().await?;
 
     let proxy = MyGreeterProxy::builder(&conn)
         .destination("org.zbus.MyGreeter")?

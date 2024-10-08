@@ -5,9 +5,12 @@ use ntest::timeout;
 use tokio::{select, sync::oneshot::Sender};
 use tracing::instrument;
 use zbus::{
+    connection,
     fdo::{DBusProxy, MonitoringProxy, NameAcquired, NameLost, NameOwnerChanged, RequestNameFlags},
+    message,
     names::BusName,
-    CacheProperties, ConnectionBuilder, MessageStream, MessageType,
+    proxy::CacheProperties,
+    MessageStream,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -41,7 +44,7 @@ async fn become_monitor() {
 #[instrument]
 async fn become_monitor_client(address: &str, tx: Sender<()>) -> anyhow::Result<()> {
     // Create a monitor that wants all messages.
-    let conn = ConnectionBuilder::address(address)?.build().await?;
+    let conn = connection::Builder::address(address)?.build().await?;
     let mut msg_stream = MessageStream::from(&conn);
     MonitoringProxy::builder(&conn)
         .cache_properties(CacheProperties::No)
@@ -78,7 +81,7 @@ async fn become_monitor_client(address: &str, tx: Sender<()>) -> anyhow::Result<
     );
 
     // Now a client that calls a method that triggers a signal.
-    let conn = ConnectionBuilder::address(address)?.build().await?;
+    let conn = connection::Builder::address(address)?.build().await?;
     let name = "org.dbus2.MonitorTest";
     DBusProxy::builder(&conn)
         .cache_properties(CacheProperties::No)
@@ -100,7 +103,7 @@ async fn become_monitor_client(address: &str, tx: Sender<()>) -> anyhow::Result<
         let member = header.member();
 
         match msg.message_type() {
-            MessageType::MethodCall => match member.unwrap().as_str() {
+            message::Type::MethodCall => match member.unwrap().as_str() {
                 "Hello" => {
                     hello_serial = Some(msg.primary_header().serial_num());
                 }
@@ -109,7 +112,7 @@ async fn become_monitor_client(address: &str, tx: Sender<()>) -> anyhow::Result<
                 }
                 method => panic!("unexpected method call: {}", method),
             },
-            MessageType::MethodReturn => {
+            message::Type::MethodReturn => {
                 let serial = header.reply_serial();
                 if serial == hello_serial {
                     hello_serial = None;
@@ -119,7 +122,7 @@ async fn become_monitor_client(address: &str, tx: Sender<()>) -> anyhow::Result<
                     panic!("unexpected method return: {}", serial.unwrap());
                 }
             }
-            MessageType::Signal => {
+            message::Type::Signal => {
                 if let Some(signal) = NameOwnerChanged::from_message(msg.clone()) {
                     let args = signal.args()?;
                     ensure!(

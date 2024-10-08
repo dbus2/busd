@@ -10,8 +10,8 @@ use tracing::{debug, info, trace, warn};
 use zbus::address::transport::{Unix, UnixSocket};
 use zbus::{
     address::{transport::Tcp, Transport},
-    connection::socket::BoxedSplit,
-    Address, AuthMechanism, Connection, ConnectionBuilder, Guid, OwnedGuid,
+    connection::{self, socket::BoxedSplit},
+    Address, AuthMechanism, Connection, Guid, OwnedGuid,
 };
 
 use crate::{
@@ -83,7 +83,7 @@ impl Bus {
         // Create a peer for ourselves.
         trace!("Creating self-dial connection.");
         let (client_socket, peer_socket) = zbus::connection::socket::Channel::pair();
-        let service_conn = ConnectionBuilder::authenticated_socket(client_socket, guid.clone())?
+        let service_conn = connection::Builder::authenticated_socket(client_socket, guid.clone())?
             .p2p()
             .unique_name(fdo::BUS_NAME)?
             .name(fdo::BUS_NAME)?
@@ -91,7 +91,7 @@ impl Bus {
             .serve_at(fdo::Monitoring::PATH, monitoring)?
             .build()
             .await?;
-        let peer_conn = ConnectionBuilder::authenticated_socket(peer_socket, guid.clone())?
+        let peer_conn = connection::Builder::authenticated_socket(peer_socket, guid.clone())?
             .p2p()
             .build()
             .await?;
