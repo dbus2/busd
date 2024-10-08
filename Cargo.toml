@@ -40,6 +40,7 @@ tracing-subscriber = { version = "0.3.18", features = [
     "ansi",
 ], default-features = false, optional = true }
 anyhow = "1.0.82"
+quick-xml = { version = "0.36.2", features = ["overlapped-lists", "serialize"] }
 # Explicitly depend on serde to enable `rc` feature.
 serde = { version = "1.0.200", features = ["rc"] }
 futures-util = "0.3.30"
