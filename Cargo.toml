@@ -10,6 +10,7 @@ rust-version = "1.74"
 repository = "https://github.com/dbus2/busd"
 keywords = ["D-Bus", "DBus", "IPC"]
 categories = ["network-programming"]
+exclude = ["LICENSE"]
 
 [lib]
 name = "busd"
