@@ -3,7 +3,7 @@ use std::pin::Pin;
 use anyhow::{bail, Error, Result};
 use futures_util::{Stream as FutureStream, TryStream, TryStreamExt};
 use tracing::trace;
-use zbus::{zvariant::Type, Message, MessageBuilder, MessageStream, MessageType};
+use zbus::{message, Message, MessageStream};
 
 use crate::peer::Peer;
 
@@ -30,7 +30,8 @@ impl Stream {
                     let header = msg.header();
 
                     // Ensure destination field is present and readable for non-signals.
-                    if msg.message_type() != MessageType::Signal && header.destination().is_none() {
+                    if msg.message_type() != message::Type::Signal && header.destination().is_none()
+                    {
                         bail!("missing destination field");
                     }
 
@@ -40,10 +41,7 @@ impl Stream {
                         Some(sender) if *sender == unique_name => Ok(msg),
                         Some(_) => bail!("failed to parse message: Invalid sender field"),
                         None => {
-                            let signature = match header.signature() {
-                                Some(sig) => sig.clone(),
-                                None => <()>::signature(),
-                            };
+                            let signature = header.signature();
                             let body = msg.body();
                             let body_bytes = body.data();
                             #[cfg(unix)]
@@ -53,7 +51,7 @@ impl Stream {
                                 .map(|fd| fd.try_clone().map(Into::into))
                                 .collect::<zbus::zvariant::Result<Vec<_>>>()?;
                             let builder =
-                                MessageBuilder::from(header.clone()).sender(&unique_name)?;
+                                message::Builder::from(header.clone()).sender(&unique_name)?;
                             let new_msg = unsafe {
                                 builder.build_raw_body(
                                     body_bytes,

@@ -13,9 +13,10 @@ use rand::{
 use tokio::{select, sync::oneshot::Sender};
 use tracing::instrument;
 use zbus::{
+    connection,
     fdo::{self, DBusProxy, ReleaseNameReply, RequestNameFlags, RequestNameReply},
     names::{BusName, WellKnownName},
-    CacheProperties, ConnectionBuilder,
+    proxy::CacheProperties,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -62,7 +63,7 @@ async fn name_ownership_changes_(address: &str) {
 
 #[instrument]
 async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow::Result<()> {
-    let conn = ConnectionBuilder::address(address)?.build().await?;
+    let conn = connection::Builder::address(address)?.build().await?;
     let conn_unique_name = conn.unique_name().unwrap().to_owned();
     let dbus_proxy = DBusProxy::builder(&conn)
         .cache_properties(CacheProperties::No)
@@ -124,7 +125,7 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
     );
 
     // Now we try with another connection and we should be queued.
-    let conn2 = ConnectionBuilder::address(address)?.build().await?;
+    let conn2 = connection::Builder::address(address)?.build().await?;
     let conn2_unique_name = conn2.unique_name().unwrap().to_owned();
     let changed = name_changed_stream.next().await.unwrap();
     ensure!(
