@@ -46,7 +46,6 @@ serde = { version = "1.0.200", features = ["rc"] }
 futures-util = { version = "0.3.30", default-features = false }
 enumflags2 = "0.7.9"
 console-subscriber = { version = "0.4.0", optional = true }
-hex = "0.4.3"
 xdg-home = "1.1.0"
 event-listener = "5.3.0"
 

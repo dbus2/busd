@@ -308,7 +308,6 @@ dependencies = [
  "enumflags2",
  "event-listener 5.3.1",
  "futures-util",
- "hex",
  "nix",
  "ntest",
  "rand",
