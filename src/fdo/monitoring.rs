@@ -28,7 +28,10 @@ impl Monitoring {
     }
 }
 
-#[interface(interface = "org.freedesktop.DBus.Monitoring")]
+#[interface(
+    interface = "org.freedesktop.DBus.Monitoring",
+    introspection_docs = false
+)]
 impl Monitoring {
     async fn become_monitor(
         &self,

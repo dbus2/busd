@@ -60,7 +60,7 @@ impl DBus {
     }
 }
 
-#[interface(interface = "org.freedesktop.DBus")]
+#[interface(interface = "org.freedesktop.DBus", introspection_docs = false)]
 impl DBus {
     /// This is already called & handled and we only need to handle it once.
     async fn hello(
