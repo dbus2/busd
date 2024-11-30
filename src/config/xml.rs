@@ -63,7 +63,7 @@ impl Document {
                         // we treat `<includedir>` as though it has `ignore_missing="yes"`
                         Err(err) => {
                             warn!(
-                                "should canonicalize directory path '{}': {:?}",
+                                "cannot resolve '<includedir>{}</includedir>' to an absolute path: {}",
                                 &dir_path.display(),
                                 err
                             );
@@ -86,7 +86,11 @@ impl Document {
                         }
                         // we treat `<includedir>` as though it has `ignore_missing="yes"`
                         Err(err) => {
-                            warn!("should read directory '{}': {:?}", &dir_path.display(), err);
+                            warn!(
+                                "cannot read '<includedir>{}</includedir>': {}",
+                                &dir_path.display(),
+                                err
+                            );
                             continue;
                         }
                     }
@@ -128,7 +132,7 @@ impl Document {
                         Ok(ok) => ok,
                         Err(err) => {
                             let msg = format!(
-                                "should canonicalize file path '{}': {:?}",
+                                "cannot resolve '<include>{}</include>' to an absolute path: {}",
                                 &file_path.display(),
                                 err
                             );
@@ -172,7 +176,7 @@ impl Document {
                 .ok_or_else(|| Error::msg("`<include>` path should contain a file name"))?
                 .to_path_buf()),
             None => {
-                warn!("ad-hoc document with unknown file path, using current working directory");
+                warn!("cannot determine file path for this XML document, using current working directory");
                 current_dir().map_err(Error::msg)
             }
         }
@@ -332,12 +336,6 @@ fn resolve_include_path(base_path: impl AsRef<Path>, include_path: impl AsRef<Pa
     if p.is_absolute() {
         return p.to_path_buf();
     }
-
-    error!(
-        "resolve_include_path: {} {}",
-        &base_path.as_ref().display(),
-        &include_path.as_ref().display()
-    );
 
     base_path.as_ref().join(p)
 }
