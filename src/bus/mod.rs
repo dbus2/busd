@@ -164,8 +164,16 @@ impl Bus {
 
                 addr
             }
-            UnixSocket::Dir(_) => bail!("`dir` transport is not supported (yet)."),
-            UnixSocket::TmpDir(_) => bail!("`tmpdir` transport is not supported (yet)."),
+            UnixSocket::Dir(dir) | UnixSocket::TmpDir(dir) => {
+                let path = dir.join(format!("dbus-{}", fastrand::u32(1_000_000..u32::MAX)));
+                let addr = SocketAddr::from_pathname(&path)?;
+                info!(
+                    "Listening on UNIX socket file `{}`.",
+                    path.to_string_lossy()
+                );
+
+                addr
+            }
             _ => bail!("Unsupported address."),
         };
         let std_listener =
@@ -250,9 +258,8 @@ fn default_address() -> String {
                 .join("user")
                 .join(format!("{}", nix::unistd::Uid::current()))
         });
-    let path = runtime_dir.join("busd-session");
 
-    format!("unix:path={}", path.display())
+    format!("unix:dir={}", runtime_dir.display())
 }
 
 #[cfg(not(unix))]
