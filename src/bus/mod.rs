@@ -258,9 +258,8 @@ fn default_address() -> String {
                 .join("user")
                 .join(format!("{}", nix::unistd::Uid::current()))
         });
-    let path = runtime_dir.join("busd-session");
 
-    format!("unix:path={}", path.display())
+    format!("unix:dir={}", runtime_dir.display())
 }
 
 #[cfg(not(unix))]
