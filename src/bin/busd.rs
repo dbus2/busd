@@ -10,9 +10,9 @@ use anyhow::Result;
 use clap::Parser;
 #[cfg(unix)]
 use tokio::{select, signal::unix::SignalKind};
-use tracing::error;
 #[cfg(unix)]
-use tracing::{info, warn};
+use tracing::warn;
+use tracing::{error, info};
 
 /// A simple D-Bus broker.
 #[derive(Parser, Debug)]
@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
     } else {
         PathBuf::from("/usr/share/dbus-1/session.conf")
     };
-    eprintln!("reading configuration file {} ...", config_path.display());
+    info!("reading configuration file {} ...", config_path.display());
     let config = Config::read_file(&config_path)?;
 
     let address = if let Some(address) = args.address {
@@ -86,7 +86,7 @@ async fn main() -> Result<()> {
     }
 
     if args.print_address {
-        println!("{}", bus.address());
+        info!("{}", bus.address());
     }
 
     // FIXME: How to handle this gracefully on Windows?
