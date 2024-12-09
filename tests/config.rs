@@ -1,8 +1,9 @@
 use std::{path::PathBuf, str::FromStr};
 
 use busd::config::{
-    Access, BusType, Config, ConnectOperation, MessageType, Name, NameOwnership, Operation, Policy,
-    ReceiveOperation, SendOperation,
+    policy::Policy,
+    rule::{Access, ConnectOperation, NameOwnership, Operation, ReceiveOperation, SendOperation},
+    BusType, Config, MessageType, Name,
 };
 use zbus::{Address, AuthMechanism};
 
