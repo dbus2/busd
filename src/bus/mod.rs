@@ -58,9 +58,16 @@ impl Bus {
         let (listener, auth_mechanism) = match address.transport() {
             #[cfg(unix)]
             Transport::Unix(unix) => {
+                // resolve address specification into address that clients can use
                 let addr = Self::unix_addr(unix)?;
+                address = Address::try_from(
+                    format!("unix:path={}", addr.as_pathname().unwrap().display()).as_str(),
+                )?;
 
-                (Self::unix_stream(addr).await?, AuthMechanism::External)
+                (
+                    Self::unix_stream(addr.clone()).await?,
+                    AuthMechanism::External,
+                )
             }
             Transport::Tcp(tcp) => {
                 #[cfg(not(windows))]
