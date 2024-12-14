@@ -1,5 +1,6 @@
-use anyhow::{bail, Ok, Result};
 use std::{str::FromStr, sync::Arc};
+
+use anyhow::{bail, Ok, Result};
 #[cfg(unix)]
 use tokio::fs::remove_file;
 use tokio::spawn;
@@ -56,7 +57,11 @@ impl Bus {
         };
         let (listener, auth_mechanism) = match address.transport() {
             #[cfg(unix)]
-            Transport::Unix(unix) => (Self::unix_stream(unix).await?, AuthMechanism::External),
+            Transport::Unix(unix) => {
+                let addr = Self::unix_addr(unix)?;
+
+                (Self::unix_stream(addr).await?, AuthMechanism::External)
+            }
             Transport::Tcp(tcp) => {
                 #[cfg(not(windows))]
                 let auth_mechanism = AuthMechanism::Anonymous;
@@ -130,14 +135,10 @@ impl Bus {
     }
 
     #[cfg(unix)]
-    async fn unix_stream(unix: &Unix) -> Result<Listener> {
-        // TODO: Use tokio::net::UnixListener directly once it supports abstract sockets:
-        //
-        // https://github.com/tokio-rs/tokio/issues/4610
-
+    fn unix_addr(unix: &Unix) -> Result<std::os::unix::net::SocketAddr> {
         use std::os::unix::net::SocketAddr;
 
-        let addr = match unix.path() {
+        Ok(match unix.path() {
             #[cfg(target_os = "linux")]
             UnixSocket::Abstract(name) => {
                 use std::os::linux::net::SocketAddrExt;
@@ -170,7 +171,15 @@ impl Bus {
                 addr
             }
             _ => bail!("Unsupported address."),
-        };
+        })
+    }
+
+    #[cfg(unix)]
+    async fn unix_stream(addr: std::os::unix::net::SocketAddr) -> Result<Listener> {
+        // TODO: Use tokio::net::UnixListener directly once it supports abstract sockets:
+        //
+        // https://github.com/tokio-rs/tokio/issues/4610
+
         let std_listener =
             tokio::task::spawn_blocking(move || std::os::unix::net::UnixListener::bind_addr(&addr))
                 .await??;
