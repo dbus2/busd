@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
         Address::try_from(bus_type)?
     };
 
-    let mut bus = bus::Bus::for_address(Some(&format!("{address}"))).await?;
+    let mut bus = bus::Bus::for_address(&format!("{address}")).await?;
 
     #[cfg(unix)]
     if let Some(fd) = args.ready_fd {

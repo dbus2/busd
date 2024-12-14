@@ -33,7 +33,7 @@ async fn multi_conenct() {
 }
 
 async fn multi_conenct_(socket_addr: &str) {
-    let mut bus = Bus::for_address(Some(socket_addr)).await.unwrap();
+    let mut bus = Bus::for_address(socket_addr).await.unwrap();
     let (tx, rx) = channel();
 
     let handle = tokio::spawn(async move {

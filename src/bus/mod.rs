@@ -1,6 +1,4 @@
 use anyhow::{bail, Ok, Result};
-#[cfg(unix)]
-use std::{env, path::Path};
 use std::{str::FromStr, sync::Arc};
 #[cfg(unix)]
 use tokio::fs::remove_file;
@@ -45,11 +43,8 @@ enum Listener {
 }
 
 impl Bus {
-    pub async fn for_address(address: Option<&str>) -> Result<Self> {
-        let mut address = match address {
-            Some(address) => Address::from_str(address)?,
-            None => Address::from_str(&default_address())?,
-        };
+    pub async fn for_address(address: &str) -> Result<Self> {
+        let mut address = Address::from_str(address)?;
         let guid: OwnedGuid = match address.guid() {
             Some(guid) => guid.to_owned().into(),
             None => {
@@ -245,24 +240,4 @@ impl Bus {
 
         self.inner.next_id
     }
-}
-
-#[cfg(unix)]
-fn default_address() -> String {
-    let runtime_dir = env::var("XDG_RUNTIME_DIR")
-        .as_ref()
-        .map(|s| Path::new(s).to_path_buf())
-        .ok()
-        .unwrap_or_else(|| {
-            Path::new("/run")
-                .join("user")
-                .join(format!("{}", nix::unistd::Uid::current()))
-        });
-
-    format!("unix:dir={}", runtime_dir.display())
-}
-
-#[cfg(not(unix))]
-fn default_address() -> String {
-    "tcp:host=127.0.0.1,port=4242".to_string()
 }

@@ -45,7 +45,7 @@ async fn greet() {
 }
 
 async fn greet_(socket_addr: &str) {
-    let mut bus = Bus::for_address(Some(socket_addr)).await.unwrap();
+    let mut bus = Bus::for_address(socket_addr).await.unwrap();
     let (tx, mut rx) = channel(1);
 
     let handle = tokio::spawn(async move {
