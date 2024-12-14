@@ -64,8 +64,16 @@ impl Bus {
             Transport::Unix(unix) => {
                 // Resolve address specification into address that clients can use.
                 let addr = Self::unix_addr(unix)?;
+                address = Address::new(Transport::Unix(Unix::new(UnixSocket::File(
+                    addr.as_pathname()
+                        .expect("Address created for UNIX socket should always have a path.")
+                        .to_path_buf(),
+                ))));
 
-                (Self::unix_stream(addr).await?, AuthMechanism::External)
+                (
+                    Self::unix_stream(addr.clone()).await?,
+                    AuthMechanism::External,
+                )
             }
             Transport::Tcp(tcp) => {
                 #[cfg(not(windows))]
