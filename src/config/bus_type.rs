@@ -1,9 +1,6 @@
 #[cfg(unix)]
 use std::{env, path::PathBuf};
 
-use anyhow::{Error, Result};
-use zbus::Address;
-
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum BusType {
     #[default]
@@ -11,22 +8,20 @@ pub enum BusType {
     System,
 }
 
-impl TryFrom<BusType> for Address {
-    type Error = Error;
+impl BusType {
     #[cfg(unix)]
-    fn try_from(value: BusType) -> Result<Self> {
-        if value == BusType::System {
-            return Address::try_from("unix:path=/run/dbus/system_bus_socket").map_err(Error::msg);
+    pub fn default_address(&self) -> String {
+        if self == &BusType::System {
+            return String::from("unix:path=/run/dbus/system_bus_socket");
         }
 
         // BusType::Session
-        Address::try_from(format!("unix:tmpdir={}", default_session_dir().display()).as_str())
-            .map_err(Error::msg)
+        format!("unix:tmpdir={}", default_session_dir().display())
     }
 
     #[cfg(not(unix))]
-    fn try_from(_value: BusType) -> Result<Self> {
-        Address::try_from("tcp:host=127.0.0.1,port=4242").map_err(Error::msg)
+    pub fn default_address(&self) -> String {
+        String::from("tcp:host=127.0.0.1,port=4242")
     }
 }
 

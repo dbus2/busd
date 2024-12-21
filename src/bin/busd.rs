@@ -10,7 +10,6 @@ use tokio::{select, signal::unix::SignalKind};
 use tracing::error;
 #[cfg(unix)]
 use tracing::{info, warn};
-use zbus::Address;
 
 use busd::{bus, config::BusType};
 
@@ -64,14 +63,13 @@ async fn main() -> Result<()> {
         BusType::default()
     };
 
-    // TODO: when we have `Config` from #159, prefer `config.listen` before `try_from(bus_type)`
-    let address = if let Some(address) = args.address {
-        Address::try_from(address.as_str())?
-    } else {
-        Address::try_from(bus_type)?
+    // TODO: when we have `Config` from #159, prefer `config.listen` before `default_address()`
+    let address = match args.address {
+        Some(some) => some,
+        None => bus_type.default_address(),
     };
 
-    let mut bus = bus::Bus::for_address(&format!("{address}")).await?;
+    let mut bus = bus::Bus::for_address(&address).await?;
 
     #[cfg(unix)]
     if let Some(fd) = args.ready_fd {
