@@ -3,8 +3,6 @@ extern crate busd;
 #[cfg(unix)]
 use std::{fs::File, io::Write, os::fd::FromRawFd};
 
-use busd::bus;
-
 use anyhow::Result;
 use clap::Parser;
 #[cfg(unix)]
@@ -13,11 +11,14 @@ use tracing::error;
 #[cfg(unix)]
 use tracing::{info, warn};
 
+use busd::{bus, config::BusType};
+
 /// A simple D-Bus broker.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// The address to listen on.
+    /// Takes precedence over any `<listen>` element in the configuration file.
     #[clap(short = 'a', long, value_parser)]
     address: Option<String>,
 
@@ -36,6 +37,17 @@ struct Args {
     #[cfg(unix)]
     #[clap(long)]
     ready_fd: Option<i32>,
+
+    /// Equivalent to `--address unix:tmpdir=$XDG_RUNTIME_DIR`
+    /// and --config /usr/share/dbus-1/session.conf`.
+    /// This is the default if `--system` is absent.
+    #[clap(long)]
+    session: bool,
+
+    /// Equivalent to `--address unix:path=/run/dbus/system_bus_socket`
+    /// and `--config /usr/share/dbus-1/system.conf`.
+    #[clap(long)]
+    system: bool,
 }
 
 #[tokio::main]
@@ -44,7 +56,20 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let mut bus = bus::Bus::for_address(args.address.as_deref()).await?;
+    // TODO: when we have `Config` from #159, prefer `config.r#type` before `BusType::default()`
+    let bus_type = if args.system {
+        BusType::System
+    } else {
+        BusType::default()
+    };
+
+    // TODO: when we have `Config` from #159, prefer `config.listen` before `default_address()`
+    let address = match args.address {
+        Some(some) => some,
+        None => bus_type.default_address(),
+    };
+
+    let mut bus = bus::Bus::for_address(&address).await?;
 
     #[cfg(unix)]
     if let Some(fd) = args.ready_fd {

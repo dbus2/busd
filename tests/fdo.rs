@@ -40,7 +40,7 @@ async fn name_ownership_changes() {
 }
 
 async fn name_ownership_changes_(address: &str) {
-    let mut bus = Bus::for_address(Some(address)).await.unwrap();
+    let mut bus = Bus::for_address(address).await.unwrap();
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     let handle = tokio::spawn(async move {
