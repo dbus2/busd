@@ -1,25 +1,31 @@
 extern crate busd;
 
+use std::path::PathBuf;
 #[cfg(unix)]
 use std::{fs::File, io::Write, os::fd::FromRawFd};
 
-use busd::bus;
+use busd::{bus, config::Config};
 
 use anyhow::Result;
 use clap::Parser;
 #[cfg(unix)]
 use tokio::{select, signal::unix::SignalKind};
-use tracing::error;
 #[cfg(unix)]
-use tracing::{info, warn};
+use tracing::warn;
+use tracing::{error, info};
 
 /// A simple D-Bus broker.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// The address to listen on.
+    /// Takes precedence over any `<listen>` element in the configuration file.
     #[clap(short = 'a', long, value_parser)]
     address: Option<String>,
+
+    /// Use the given configuration file.
+    #[clap(long)]
+    config: Option<PathBuf>,
 
     /// Print the address of the message bus to standard output.
     #[clap(long)]
@@ -36,6 +42,15 @@ struct Args {
     #[cfg(unix)]
     #[clap(long)]
     ready_fd: Option<i32>,
+
+    /// Equivalent to `--config /usr/share/dbus-1/session.conf`.
+    /// This is the default if `--config` and `--system` are unspecified.
+    #[clap(long)]
+    session: bool,
+
+    /// Equivalent to `--config /usr/share/dbus-1/system.conf`.
+    #[clap(long)]
+    system: bool,
 }
 
 #[tokio::main]
@@ -44,7 +59,23 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let mut bus = bus::Bus::for_address(args.address.as_deref()).await?;
+    let config_path = if args.system {
+        PathBuf::from("/usr/share/dbus-1/system.conf")
+    } else if let Some(config_path) = args.config {
+        config_path
+    } else {
+        PathBuf::from("/usr/share/dbus-1/session.conf")
+    };
+    info!("reading configuration file {} ...", config_path.display());
+    let config = Config::read_file(&config_path)?;
+
+    let address = if let Some(address) = args.address {
+        Some(address)
+    } else {
+        config.listen.map(|address| format!("{address}"))
+    };
+
+    let mut bus = bus::Bus::for_address(address.as_deref()).await?;
 
     #[cfg(unix)]
     if let Some(fd) = args.ready_fd {
