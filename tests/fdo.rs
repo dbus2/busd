@@ -7,8 +7,8 @@ use futures_util::stream::StreamExt;
 use ntest::timeout;
 #[cfg(unix)]
 use rand::{
-    distributions::{Alphanumeric, DistString},
-    thread_rng,
+    distr::{Alphanumeric, SampleString},
+    rng,
 };
 use tokio::{select, sync::oneshot::Sender};
 use tracing::instrument;
@@ -28,7 +28,7 @@ async fn name_ownership_changes() {
     // Unix socket
     #[cfg(unix)]
     {
-        let s = Alphanumeric.sample_string(&mut thread_rng(), 10);
+        let s = Alphanumeric.sample_string(&mut rng(), 10);
         let path = temp_dir().join(s);
         let address = format!("unix:path={}", path.display());
         name_ownership_changes_(&address).await;

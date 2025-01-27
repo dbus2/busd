@@ -6,8 +6,8 @@ use futures_util::future::join_all;
 use ntest::timeout;
 #[cfg(unix)]
 use rand::{
-    distributions::{Alphanumeric, DistString},
-    thread_rng,
+    distr::{Alphanumeric, SampleString},
+    rng,
 };
 use tokio::{select, sync::oneshot::channel};
 use tracing::instrument;
@@ -21,7 +21,7 @@ async fn multi_conenct() {
 
     #[cfg(unix)]
     {
-        let s = Alphanumeric.sample_string(&mut thread_rng(), 10);
+        let s = Alphanumeric.sample_string(&mut rng(), 10);
         let path = temp_dir().join(s);
         let address = format!("unix:path={}", path.display());
         multi_conenct_(&address).await;
