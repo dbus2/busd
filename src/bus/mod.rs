@@ -68,7 +68,8 @@ impl Bus {
                     addr.as_pathname()
                         .expect("Address created for UNIX socket should always have a path.")
                         .to_path_buf(),
-                ))));
+                ))))
+                .set_guid(guid.clone())?;
 
                 (
                     Self::unix_stream(addr.clone()).await?,
