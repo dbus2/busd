@@ -21,8 +21,8 @@ name = "busd"
 path = "src/bin/busd.rs"
 
 [dependencies]
-zbus = { git = "https://github.com/dbus2/zbus/", features = [
 #zbus = { version = "5.0", features = [
+zbus = { git = "https://github.com/dbus2/zbus/", features = [
     "tokio",
     "bus-impl",
 ], default-features = false }
@@ -32,7 +32,11 @@ tokio = { version = "1.37.0", features = [
     "signal",
     "tracing",
 ] }
-clap = { version = "4.5.4", features = ["derive", "std", "help"], default-features = false }
+clap = { version = "4.5.4", features = [
+    "derive",
+    "std",
+    "help",
+], default-features = false }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = [
     "env-filter",
