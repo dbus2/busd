@@ -1,15 +1,12 @@
 use anyhow::{bail, Ok, Result};
-#[cfg(unix)]
-use std::{env, path::Path};
-use std::{str::FromStr, sync::Arc};
-#[cfg(unix)]
-use tokio::fs::remove_file;
-use tokio::spawn;
+use std::{env, path::Path, str::FromStr, sync::Arc};
+use tokio::{fs::remove_file, spawn};
 use tracing::{debug, info, trace, warn};
-#[cfg(unix)]
-use zbus::address::transport::{Unix, UnixSocket};
 use zbus::{
-    address::{transport::Tcp, Transport},
+    address::{
+        transport::{Tcp, Unix, UnixSocket},
+        Transport,
+    },
     connection::{self, socket::BoxedSplit},
     Address, AuthMechanism, Connection, Guid, OwnedGuid,
 };
@@ -39,7 +36,6 @@ pub struct Inner {
 
 #[derive(Debug)]
 enum Listener {
-    #[cfg(unix)]
     Unix(tokio::net::UnixListener),
     Tcp(tokio::net::TcpListener),
 }
@@ -60,7 +56,6 @@ impl Bus {
             }
         };
         let (listener, auth_mechanism) = match address.transport() {
-            #[cfg(unix)]
             Transport::Unix(unix) => {
                 // Resolve address specification into address that clients can use.
                 let addr = Self::unix_addr(unix)?;
@@ -76,16 +71,7 @@ impl Bus {
                     AuthMechanism::External,
                 )
             }
-            Transport::Tcp(tcp) => {
-                #[cfg(not(windows))]
-                let auth_mechanism = AuthMechanism::Anonymous;
-                #[cfg(windows)]
-                let auth_mechanism = AuthMechanism::External;
-
-                (Self::tcp_stream(tcp).await?, auth_mechanism)
-            }
-            #[cfg(windows)]
-            Transport::Autolaunch(_) => bail!("`autolaunch` transport is not supported (yet)."),
+            Transport::Tcp(tcp) => (Self::tcp_stream(tcp).await?, AuthMechanism::Anonymous),
             _ => bail!("Unsupported address `{}`.", address),
         };
 
@@ -139,7 +125,6 @@ impl Bus {
     // AsyncDrop would have been nice!
     pub async fn cleanup(self) -> Result<()> {
         match self.inner.address.transport() {
-            #[cfg(unix)]
             Transport::Unix(unix) => match unix.path() {
                 UnixSocket::File(path) => remove_file(path).await.map_err(Into::into),
                 _ => Ok(()),
@@ -148,7 +133,6 @@ impl Bus {
         }
     }
 
-    #[cfg(unix)]
     fn unix_addr(unix: &Unix) -> Result<std::os::unix::net::SocketAddr> {
         use std::os::unix::net::SocketAddr;
 
@@ -188,7 +172,6 @@ impl Bus {
         })
     }
 
-    #[cfg(unix)]
     async fn unix_stream(addr: std::os::unix::net::SocketAddr) -> Result<Listener> {
         // TODO: Use tokio::net::UnixListener directly once it supports abstract sockets:
         //
@@ -237,7 +220,6 @@ impl Bus {
 
     async fn accept(&mut self) -> Result<BoxedSplit> {
         let stream = match &mut self.listener {
-            #[cfg(unix)]
             Listener::Unix(listener) => listener.accept().await.map(|(stream, _)| stream.into())?,
             Listener::Tcp(listener) => listener.accept().await.map(|(stream, _)| stream.into())?,
         };
@@ -265,7 +247,6 @@ impl Bus {
     }
 }
 
-#[cfg(unix)]
 fn default_address() -> String {
     let runtime_dir = env::var("XDG_RUNTIME_DIR")
         .as_ref()

@@ -455,7 +455,6 @@ fn config_read_file_system_conf_ok() {
     assert_eq!(got, want,);
 }
 
-#[cfg(unix)]
 #[test]
 fn config_read_file_real_usr_share_dbus1_session_conf_ok() {
     let config_path = PathBuf::from("/usr/share/dbus-1/session.conf");
@@ -465,7 +464,6 @@ fn config_read_file_real_usr_share_dbus1_session_conf_ok() {
     Config::read_file(config_path).expect("should read and parse XML input");
 }
 
-#[cfg(unix)]
 #[test]
 fn config_read_file_real_usr_share_dbus1_system_conf_ok() {
     let config_path = PathBuf::from("/usr/share/dbus-1/system.conf");

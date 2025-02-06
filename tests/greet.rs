@@ -1,12 +1,9 @@
-#[cfg(unix)]
-use std::env::temp_dir;
-use std::time::Duration;
+use std::{env::temp_dir, time::Duration};
 
 use anyhow::anyhow;
 use busd::bus::Bus;
 use futures_util::{pin_mut, stream::StreamExt};
 use ntest::timeout;
-#[cfg(unix)]
 use rand::{
     distr::{Alphanumeric, SampleString},
     rng,
@@ -31,13 +28,10 @@ async fn greet() {
     busd::tracing_subscriber::init();
 
     // Unix socket
-    #[cfg(unix)]
-    {
-        let s = Alphanumeric.sample_string(&mut rng(), 10);
-        let path = temp_dir().join(s);
-        let address = format!("unix:path={}", path.display());
-        greet_(&address).await;
-    }
+    let s = Alphanumeric.sample_string(&mut rng(), 10);
+    let path = temp_dir().join(s);
+    let address = format!("unix:path={}", path.display());
+    greet_(&address).await;
 
     // TCP socket
     let address = "tcp:host=127.0.0.1,port=4248".to_string();
