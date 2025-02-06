@@ -5,8 +5,8 @@
 
 # busd
 
-A D-Bus bus (broker) implementation in Rust. Since it's pure Rust, it's much easier to build for
-multiple platforms (Linux, Mac and Windows being the primary targets) than other D-Bus brokers.
+A D-Bus bus (broker) implementation in Rust. Since it's pure Rust, it's much easier to cross-build
+than other D-Bus brokers.
 
 ## Status
 
