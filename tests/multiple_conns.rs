@@ -1,10 +1,8 @@
-#[cfg(unix)]
 use std::env::temp_dir;
 
 use busd::bus::Bus;
 use futures_util::future::join_all;
 use ntest::timeout;
-#[cfg(unix)]
 use rand::{
     distr::{Alphanumeric, SampleString},
     rng,
@@ -19,13 +17,11 @@ use zbus::connection;
 async fn multi_conenct() {
     busd::tracing_subscriber::init();
 
-    #[cfg(unix)]
-    {
-        let s = Alphanumeric.sample_string(&mut rng(), 10);
-        let path = temp_dir().join(s);
-        let address = format!("unix:path={}", path.display());
-        multi_conenct_(&address).await;
-    }
+    // Unix socket
+    let s = Alphanumeric.sample_string(&mut rng(), 10);
+    let path = temp_dir().join(s);
+    let address = format!("unix:path={}", path.display());
+    multi_conenct_(&address).await;
 
     // TCP socket
     let address = "tcp:host=127.0.0.1,port=4246".to_string();

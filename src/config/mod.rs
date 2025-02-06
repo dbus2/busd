@@ -144,7 +144,6 @@ impl TryFrom<Document> for Config {
                     config
                         .servicedirs
                         .push(PathBuf::from("/usr/share/dbus-1/services"));
-                    // TODO: add Windows-specific session directories
                 }
                 Element::StandardSystemServicedirs => {
                     // TODO: warn and then ignore if we aren't reading:

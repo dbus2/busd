@@ -44,7 +44,6 @@ impl Stream {
                             let signature = header.signature();
                             let body = msg.body();
                             let body_bytes = body.data();
-                            #[cfg(unix)]
                             let fds = body_bytes
                                 .fds()
                                 .iter()
@@ -52,14 +51,8 @@ impl Stream {
                                 .collect::<zbus::zvariant::Result<Vec<_>>>()?;
                             let builder =
                                 message::Builder::from(header.clone()).sender(&unique_name)?;
-                            let new_msg = unsafe {
-                                builder.build_raw_body(
-                                    body_bytes,
-                                    signature,
-                                    #[cfg(unix)]
-                                    fds,
-                                )?
-                            };
+                            let new_msg =
+                                unsafe { builder.build_raw_body(body_bytes, signature, fds)? };
                             trace!("Added sender field to message: {:?}", new_msg);
 
                             Ok(new_msg)
