@@ -138,7 +138,6 @@ impl TryFrom<Document> for Config {
                     let mut servicedirs_in_data_dirs = xdg_data_dirs()
                         .iter()
                         .map(|p| p.join("dbus-1/services"))
-                        .map(PathBuf::from)
                         .collect();
                     config.servicedirs.append(&mut servicedirs_in_data_dirs);
                     config
