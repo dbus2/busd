@@ -69,7 +69,7 @@ lto = "fat"
 codegen-units = 1
 opt-level = "s"
 panic = "abort"
-# generates a seperate *.dwp/*.dSYM so the binary can get stripped
+# generates a separate *.dwp/*.dSYM so the binary can get stripped
 split-debuginfo = "packed"
 strip = "symbols"
 # No one needs an undebuggable release binary
