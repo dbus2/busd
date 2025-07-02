@@ -47,7 +47,7 @@ async fn greet_(socket_addr: &str) {
             _ = rx.recv() => (),
             res = bus.run() => match res {
                 Ok(()) => panic!("Bus exited unexpectedly"),
-                Err(e) => panic!("Bus exited with an error: {}", e),
+                Err(e) => panic!("Bus exited with an error: {e}"),
             }
         }
 

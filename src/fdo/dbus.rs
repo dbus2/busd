@@ -47,7 +47,7 @@ impl DBus {
         let mut peers = peers.peers_mut().await;
         let peer = peers
             .get_mut(name.as_str())
-            .ok_or_else(|| Error::NameHasNoOwner(format!("No such peer: {}", name)))?;
+            .ok_or_else(|| Error::NameHasNoOwner(format!("No such peer: {name}")))?;
 
         func(peer)
     }
@@ -73,7 +73,7 @@ impl DBus {
         let mut peers = peers.peers_mut().await;
         let peer = peers
             .get_mut(name.as_str())
-            .ok_or_else(|| Error::NameHasNoOwner(format!("No such peer: {}", name)))?;
+            .ok_or_else(|| Error::NameHasNoOwner(format!("No such peer: {name}")))?;
         peer.hello().await?;
 
         // Notify name change in a separate task because we want:
@@ -214,12 +214,11 @@ impl DBus {
         let peers = peers.peers().await;
         let peer = peers
             .get(&owner)
-            .ok_or_else(|| Error::Failed(format!("Peer `{}` not found", bus_name)))?;
+            .ok_or_else(|| Error::Failed(format!("Peer `{bus_name}` not found")))?;
 
         peer.conn().peer_credentials().await.map_err(|e| {
             Error::Failed(format!(
-                "Failed to get peer credentials for `{}`: {}",
-                bus_name, e
+                "Failed to get peer credentials for `{bus_name}`: {e}"
             ))
         })
     }
