@@ -37,7 +37,7 @@ async fn multi_conenct_(socket_addr: &str) {
             _ = rx => (),
             res = bus.run() => match res {
                 Ok(()) => panic!("Bus exited unexpectedly"),
-                Err(e) => panic!("Bus exited with an error: {}", e),
+                Err(e) => panic!("Bus exited with an error: {e}"),
             }
         }
 

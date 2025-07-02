@@ -28,7 +28,7 @@ async fn become_monitor() {
             _ = rx => (),
             res = bus.run() => match res {
                 Ok(()) => panic!("Bus exited unexpectedly"),
-                Err(e) => panic!("Bus exited with an error: {}", e),
+                Err(e) => panic!("Bus exited with an error: {e}"),
             }
         }
 
@@ -110,7 +110,7 @@ async fn become_monitor_client(address: &str, tx: Sender<()>) -> anyhow::Result<
                 "RequestName" => {
                     request_name_serial = Some(msg.primary_header().serial_num());
                 }
-                method => panic!("unexpected method call: {}", method),
+                method => panic!("unexpected method call: {method}"),
             },
             message::Type::MethodReturn => {
                 let serial = header.reply_serial();

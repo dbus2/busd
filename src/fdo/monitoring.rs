@@ -47,7 +47,7 @@ impl Monitoring {
             // Can it happen in any other situation than the bus shutting down?
             .ok_or_else(|| Error::Failed("Bus shutting down.".to_string()))?;
         if !peers.make_monitor(&owner, match_rules).await {
-            return Err(Error::NameHasNoOwner(format!("No such peer: {}", owner)));
+            return Err(Error::NameHasNoOwner(format!("No such peer: {owner}")));
         }
         debug!("{} became a monitor", owner);
 
