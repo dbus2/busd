@@ -30,7 +30,7 @@ Same rules apply here as for bug reports and feature requests. Plus:
 * We also prefer adding [emoji prefixes to commit messages](https://gitmoji.carloscuesta.me/). Since
   the `gitmoji` CLI tool can be very [slow](https://github.com/zeenix/gimoji#rationale), we
   recommend using [`gimoji`](https://github.com/zeenix/gimoji) instead. You can also pick an emoji
-  direcitly from [here](https://gitmoji.dev/).
+  direcitly from [here](https://zeenix.github.io/gimoji/).
 * Add details to each commit about the changes it contains. PR description is for summarizing the
   overall changes in the PR, while commit logs are for describing the specific changes of the
   commit in question.
