@@ -7,8 +7,9 @@ pub use monitor::*;
 use anyhow::Result;
 use tracing::trace;
 use zbus::{
-    connection, connection::socket::BoxedSplit, names::OwnedUniqueName, AuthMechanism, Connection,
-    OwnedGuid, OwnedMatchRule,
+    connection::{self, socket::BoxedSplit},
+    names::{BusName, OwnedUniqueName},
+    AuthMechanism, Connection, OwnedGuid, OwnedMatchRule,
 };
 
 use crate::{fdo, match_rules::MatchRules, name_registry::NameRegistry};
@@ -81,7 +82,8 @@ impl Peer {
     ///
     /// Same as [`MatchRules::matches`].
     pub fn interested(&self, msg: &zbus::Message, name_registry: &NameRegistry) -> bool {
-        self.match_rules.matches(msg, name_registry)
+        msg.header().destination() == Some(&BusName::Unique(self.unique_name.as_ref()))
+            || self.match_rules.matches(msg, name_registry)
     }
 
     pub fn add_match_rule(&mut self, rule: OwnedMatchRule) {
