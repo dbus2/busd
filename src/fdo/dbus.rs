@@ -9,6 +9,7 @@ use tracing::warn;
 use zbus::{
     fdo::{
         ConnectionCredentials, Error, ReleaseNameReply, RequestNameFlags, RequestNameReply, Result,
+        StartServiceReply,
     },
     interface, message,
     names::{BusName, InterfaceName, OwnedBusName, OwnedUniqueName, UniqueName, WellKnownName},
@@ -319,8 +320,15 @@ impl DBus {
     }
 
     /// Tries to launch the executable associated with a name (service activation).
-    fn start_service_by_name(&self, _name: WellKnownName<'_>, _flags: u32) -> Result<u32> {
-        // TODO: Implement when we support service activation.
+    async fn start_service_by_name(
+        &self,
+        name: WellKnownName<'_>,
+        _flags: u32,
+    ) -> Result<StartServiceReply> {
+        if self.name_has_owner(name.into()).await? {
+            return Ok(StartServiceReply::AlreadyRunning);
+        }
+        // TODO: Implement further when we support service activation.
         Err(Error::Failed(
             "Service activation not yet supported".to_string(),
         ))
