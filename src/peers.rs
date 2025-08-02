@@ -298,7 +298,9 @@ impl Peers {
         trace!("Broadcasting message: {:?}", msg);
         let name_registry = self.name_registry().await;
         for peer in self.peers.read().await.values() {
-            if !peer.interested(&msg, &name_registry) {
+            if msg.header().destination() != Some(&BusName::Unique(peer.unique_name().as_ref()))
+                && !peer.interested(&msg, &name_registry)
+            {
                 trace!("Peer {} not interested in {msg:?}", peer.unique_name());
                 continue;
             }
