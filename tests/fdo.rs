@@ -2,6 +2,7 @@ use std::env::temp_dir;
 
 use anyhow::ensure;
 use busd::bus::Bus;
+use enumflags2::BitFlag;
 use futures_util::stream::StreamExt;
 use ntest::timeout;
 use rand::{
@@ -140,7 +141,7 @@ async fn name_ownership_changes_client(address: &str, tx: Sender<()>) -> anyhow:
         .build()
         .await?;
     let ret = dbus_proxy2
-        .request_name(name.clone(), Default::default())
+        .request_name(name.clone(), RequestNameFlags::empty())
         .await?;
 
     // Check that first client is the primary owner before it releases the name.
