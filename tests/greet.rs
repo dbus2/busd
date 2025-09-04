@@ -75,11 +75,19 @@ async fn greet_service(socket_addr: &str) -> anyhow::Result<Connection> {
         async fn say_hello(
             &mut self,
             name: &str,
+            unicast: bool,
             #[zbus(signal_emitter)] ctxt: SignalEmitter<'_>,
             #[zbus(header)] header: message::Header<'_>,
         ) -> fdo::Result<String> {
             self.count += 1;
             let path = header.path().unwrap().clone();
+            let ctxt = if unicast {
+                ctxt.set_destination(zbus::names::BusName::Unique(
+                    header.sender().unwrap().to_owned(),
+                ))
+            } else {
+                ctxt
+            };
             Self::greeted(&ctxt, name, self.count, path).await?;
             Ok(format!(
                 "Hello {}! I have been called {} times.",
@@ -112,7 +120,7 @@ async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
         default_path = "/org/zbus/MyGreeter"
     )]
     trait MyGreeter {
-        fn say_hello(&self, name: &str) -> zbus::Result<String>;
+        fn say_hello(&self, name: &str, unicast: bool) -> zbus::Result<String>;
 
         #[zbus(signal)]
         async fn greeted(name: &str, count: u64, path: ObjectPath<'_>);
@@ -126,7 +134,7 @@ async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
         .build()
         .await?;
     let mut greeted_stream = proxy.receive_greeted().await?;
-    let reply = proxy.say_hello("Maria").await?;
+    let reply = proxy.say_hello("Maria", false).await?;
     assert_eq!(reply, "Hello Maria! I have been called 1 times.");
     let signal = greeted_stream
         .next()
@@ -144,10 +152,18 @@ async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
         Greeted::from_message(msg)
     });
     pin_mut!(msg_stream);
-    let _ = proxy.say_hello("Maria").await?;
+    let _ = proxy.say_hello("Maria", false).await?;
     timeout(Duration::from_millis(10), msg_stream.next())
         .await
         .unwrap_err();
+
+    // ..unless it's targeted to us specifically
+    let _ = proxy.say_hello("Maria", true).await?;
+    let signal = timeout(Duration::from_millis(10), msg_stream.next())
+        .await?
+        .unwrap();
+    let args = signal.args()?;
+    assert_eq!(args.name, "Maria");
 
     // Now let's try a manual subscription.
     let match_rule = MatchRule::builder()
@@ -160,7 +176,7 @@ async fn greet_client(socket_addr: &str) -> anyhow::Result<()> {
         .await?
         .add_match_rule(match_rule)
         .await?;
-    let _ = proxy.say_hello("Maria").await?;
+    let _ = proxy.say_hello("Maria", false).await?;
     let signal = msg_stream.next().await.unwrap();
     let args = signal.args()?;
     assert_eq!(args.name, "Maria");
